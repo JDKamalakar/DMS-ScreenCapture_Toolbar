@@ -139,7 +139,7 @@ PluginComponent {
                 width: 320
                 height: root.settingsExpanded ? settingsCol.implicitHeight + 40 : 0
                 radius: 24
-                color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, 0.98)
+                color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, 0.85)
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.12)
                 clip: true
@@ -183,67 +183,152 @@ PluginComponent {
                     anchors.margins: 20
                     spacing: 12
                     
-                    StyledText { text: "Capture Settings"; font.bold: true; font.pixelSize: 16; color: Theme.surfaceText }
-                    
-                    SettingToggle { 
-                        label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
-                        onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
-                    }
-                    SettingToggle { 
-                        label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
-                        onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
-                    }
-                    SettingToggle { 
-                        label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
-                        onToggled: { root.copyToClipboard = !root.copyToClipboard; root._save("copyToClipboard", root.copyToClipboard) }
-                    }
-                    SettingToggle { 
-                        label: "Screenshot Editor"; iconName: "output"; active: root.stdout
-                        onToggled: { root.stdout = !root.stdout; root._save("stdout", root.stdout) }
-                    }
-                    SettingToggle { 
-                        label: "Show Notification"; iconName: "notifications"; active: root.showNotify
-                        onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
+                    RowLayout {
+                        spacing: 8
+                        DankIcon { name: "settings"; size: 16; color: Theme.surfaceText }
+                        StyledText { text: "Options"; font.bold: true; font.pixelSize: 15; color: Theme.surfaceText; Layout.fillWidth: true }
                     }
                     
-                    Rectangle { width: parent.width; height: 1; color: Qt.rgba(1,1,1,0.1); Layout.topMargin: 4; Layout.bottomMargin: 4 }
-                    
-                    ColumnLayout {
-                        Layout.fillWidth: true; spacing: 8
-                        RowLayout {
-                            spacing: 10
-                            DankIcon { name: "image"; size: 16; color: Theme.surfaceVariantText }
-                            StyledText { text: "Image Format"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
-                        }
-                        DankButtonGroup {
-                            Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54; scale: 0.95
-                            model: ["PNG", "JPG", "PPM"]
-                            currentIndex: root.format === "png" ? 0 : (root.format === "jpg" ? 1 : 2)
-                            onSelectionChanged: function(idx, sel) { 
-                                if (sel) { 
-                                    var fmts = ["png", "jpg", "ppm"];
-                                    root.format = fmts[idx]; 
-                                    root._save("format", root.format);
-                                } 
+                    // Toggles Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: togglesCol.implicitHeight
+                        radius: 12
+                        color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.06)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.15)
+                        clip: true
+                        
+                        Column {
+                            id: togglesCol
+                            width: parent.width
+                            
+                            SettingToggle { 
+                                label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
+                                onToggled: { root.copyToClipboard = active; root._save("copyToClipboard", root.copyToClipboard) }
+                            }
+                            SettingToggle { 
+                                label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
+                                onToggled: { root.saveToDisk = active; root._save("saveToDisk", root.saveToDisk) }
+                            }
+                            SettingToggle { 
+                                label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
+                                onToggled: { root.showPointer = active; root._save("showPointer", root.showPointer) }
+                            }
+                            SettingToggle { 
+                                label: "Screenshot Editor"; iconName: "output"; active: root.stdout
+                                onToggled: { root.stdout = active; root._save("stdout", root.stdout) }
+                            }
+                            SettingToggle { 
+                                label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                isLast: true
+                                onToggled: { root.showNotify = active; root._save("showNotify", root.showNotify) }
                             }
                         }
                     }
                     
-                    ColumnLayout {
-                        Layout.fillWidth: true; spacing: 8
-                        RowLayout {
-                            spacing: 10
-                            DankIcon { name: "folder"; size: 16; color: Theme.surfaceVariantText }
-                            StyledText { text: "Custom Directory"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                    // Format Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: formatCol.implicitHeight + 24
+                        radius: 12
+                        color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.06)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.15)
+                        
+                        ColumnLayout {
+                            id: formatCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+                            
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "image"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Image Format"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankButtonGroup {
+                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
+                                scale: 0.95; transformOrigin: Item.Left
+                                model: ["PNG", "JPG", "PPM"]
+                                currentIndex: root.format === "png" ? 0 : (root.format === "jpg" ? 1 : 2)
+                                onSelectionChanged: function(idx, sel) { 
+                                    if (sel) { 
+                                        var fmts = ["png", "jpg", "ppm"];
+                                        root.format = fmts[idx]; 
+                                        root._save("format", root.format);
+                                    } 
+                                }
+                            }
                         }
-                        DankTextField {
-                            Layout.fillWidth: true; height: 28
-                            font.pixelSize: 12
-                            text: root.customPath
-                            placeholderText: "~/Pictures"
-                            onEditingFinished: {
-                                root.customPath = text; 
-                                root._save("customPath", text);
+                    }
+                    
+                    // JPG Quality Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: qualityCol.implicitHeight + 24
+                        radius: 12
+                        color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.06)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.15)
+                        visible: root.format === "jpg"
+                        
+                        ColumnLayout {
+                            id: qualityCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+                            
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "high_quality"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "JPG Quality"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankTextField {
+                                Layout.fillWidth: true; height: 28
+                                font.pixelSize: 12
+                                text: root.quality.toString()
+                                placeholderText: "90"
+                                onEditingFinished: {
+                                    var v = parseInt(text);
+                                    if (!isNaN(v)) { root.quality = v; root._save("quality", v); }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Custom Directory Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: pathCol.implicitHeight + 24
+                        radius: 12
+                        color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.06)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.15)
+                        
+                        ColumnLayout {
+                            id: pathCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+                            
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "folder"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Custom Directory"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankTextField {
+                                Layout.fillWidth: true; height: 28
+                                font.pixelSize: 12
+                                text: root.customPath
+                                placeholderText: "~/Pictures"
+                                onEditingFinished: {
+                                    root.customPath = text; 
+                                    root._save("customPath", text);
+                                }
                             }
                         }
                     }
@@ -363,31 +448,56 @@ PluginComponent {
             Behavior on color { ColorAnimation { duration: 200 } }
         }
         DankIcon { name: parent.iconName; size: 22; anchors.centerIn: parent; color: active ? Theme.primary : Theme.surfaceText }
-        MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
-        
-        DankTooltipV2 {
-            text: parent.tooltipText
-            visible: ma.containsMouse && parent.tooltipText !== ""
+        MouseArea { 
+            id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; 
+            onClicked: parent.clicked() 
+            onEntered: { if (parent.tooltipText !== "") globalTooltip.show(parent.tooltipText, parent) }
+            onExited: globalTooltip.hide()
         }
     }
 
-    component SettingToggle: RowLayout {
+    component SettingToggle: Rectangle {
+        id: toggleRoot
         property string label: ""
         property string iconName: ""
         property bool active: false
+        property bool isLast: false
         signal toggled()
-        spacing: 12
-        DankIcon { name: parent.iconName; size: 18; color: Theme.surfaceVariantText }
-        StyledText { text: label; font.pixelSize: 14; color: Theme.surfaceText; Layout.fillWidth: true }
-        DankToggle { 
-            scale: 0.8
-            checked: parent.active
-            onClicked: { parent.toggled(); }
+        width: parent.width; height: 44
+        color: ma.containsMouse ? Qt.rgba(Theme.primary.r || 1, Theme.primary.g || 1, Theme.primary.b || 1, 0.08) : "transparent"
+        Behavior on color { ColorAnimation { duration: 150 } }
+        
+        RowLayout {
+            anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 12
+            DankIcon { name: toggleRoot.iconName; size: 18; color: Theme.surfaceVariantText }
+            StyledText { text: toggleRoot.label; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+            DankToggle { 
+                scale: 0.85
+                transformOrigin: Item.Right
+                checked: toggleRoot.active
+                onClicked: { toggleRoot.active = !toggleRoot.active; toggleRoot.toggled(); }
+            }
+        }
+        
+        Rectangle {
+            width: parent.width; height: 1
+            anchors.bottom: parent.bottom
+            color: Qt.rgba(Theme.secondary.r || 1, Theme.secondary.g || 1, Theme.secondary.b || 1, 0.15)
+            visible: !toggleRoot.isLast
+        }
+        
+        MouseArea { 
+            id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+            onClicked: { toggleRoot.active = !toggleRoot.active; toggleRoot.toggled(); }
         }
     }
 
     Component.onCompleted: {
         console.info("screenCaptureToolbar: daemon loaded — use 'dms ipc screenCaptureToolbar toggle' to open");
+    }
+
+    DankTooltipV2 {
+        id: globalTooltip
     }
 }
 
