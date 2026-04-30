@@ -31,14 +31,17 @@ PluginComponent {
 
     // -- Video Settings ------------------------------------------------------
     property bool recordAudio: (pluginData && pluginData.recordAudio != null) ? pluginData.recordAudio : true
-    property string videoFormat: (pluginData && pluginData.videoFormat) || "mp4"
+    property string videoFormat: (pluginData && pluginData.videoFormat) || "mkv"
     property int videoFPS: (pluginData && pluginData.videoFPS) || 60
     property string videoCodec: (pluginData && pluginData.videoCodec) || "auto"
     property bool isRecording: false
     property bool isPaused: false
     property int recordingElapsed: 0
     property var recordingProcess: null
-    property bool showNotify: (pluginData && pluginData.showNotify != null) ? pluginData.showNotify : true
+    property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
+    property bool showNotify: (pluginData && pluginData.showNotify !== undefined) ? pluginData.showNotify : true
+    property real toolbarOpacity: (pluginData && pluginData.toolbarOpacity != null) ? pluginData.toolbarOpacity : 0.85
+    property real pillOpacity: (pluginData && pluginData.pillOpacity != null) ? pluginData.pillOpacity : 0.92
 
     // -- IPC ------------------------------------------------------------------
     IpcHandler {
@@ -63,7 +66,9 @@ PluginComponent {
 
 
     function open() {
+        root.settingsExpanded = false;
         overlay.visible = true;
+        overlay.forceActiveFocus();
     }
 
     function close() {
@@ -80,6 +85,14 @@ PluginComponent {
         if (typeof PluginService !== "undefined" && PluginService) {
             PluginService.savePluginData("screenCaptureToolbar", key, value);
         }
+    }
+
+    function performCapture() {
+        if (root.isRecording) {
+            root.stopRecording();
+            return;
+        }
+        root.handleCapture(root.captureMode);
     }
 
     function handleCapture(mode) {
@@ -139,7 +152,11 @@ PluginComponent {
         prepends.push("MONITOR=\"\"; if command -v niri >/dev/null 2>&1; then MONITOR=$(niri msg -j outputs 2>/dev/null | jq -r 'keys[0]'); elif command -v hyprctl >/dev/null 2>&1; then MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name'); fi; if [ -z \"$MONITOR\" ] || [ \"$MONITOR\" = \"null\" ]; then MONITOR=\"portal\"; fi");
 
         let gsrCmd = "gpu-screen-recorder";
-        gsrCmd += " -w \"$MONITOR\"";
+        if (root.captureMode === "interactive") {
+            gsrCmd += " -w portal";
+        } else {
+            gsrCmd += " -w \"$MONITOR\"";
+        }
         gsrCmd += " -c " + root.videoFormat;
         gsrCmd += " -f " + root.videoFPS;
         if (root.recordAudio) gsrCmd += " -a \"$AUDIO\"";
@@ -210,7 +227,7 @@ PluginComponent {
         WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar"
         WlrLayershell.layer: WlrLayershell.Overlay
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: overlay.visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: overlay.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
         anchors {
             top: true
@@ -219,14 +236,66 @@ PluginComponent {
             bottom: true
         }
 
+        Item {
+            anchors.fill: parent
+            focus: overlay.visible
+            Keys.onEscapePressed: root.close()
+            Keys.onSpacePressed: root.performCapture()
+        }
+
+
+
         // Background Dim
         Rectangle {
+            id: dim
             anchors.fill: parent
             color: "black"
             opacity: overlay.visible ? 0.15 : 0
             Behavior on opacity { NumberAnimation { duration: 300 } }
-            MouseArea { anchors.fill: parent; onClicked: root.close() }
         }
+
+        // Local Tooltip with "above icon" logic - inside the window
+        Item {
+            id: globalTooltip
+            visible: false
+            property string text: ""
+            property Item targetItem: null
+            z: 999
+            
+            // Positioning logic: centered above the targetItem
+            x: targetItem ? targetItem.mapToItem(overlay.contentItem, 0, 0).x + (targetItem.width - width) / 2 : 0
+            y: targetItem ? targetItem.mapToItem(overlay.contentItem, 0, 0).y - height - 8 : 0
+            
+            width: tooltipLabel.implicitWidth + 24
+            height: 32
+            
+            Rectangle {
+                anchors.fill: parent
+                radius: 12
+                color: Qt.rgba(Theme.surfaceContainerHighest.r || 0.1, Theme.surfaceContainerHighest.g || 0.1, Theme.surfaceContainerHighest.b || 0.1, root.toolbarOpacity)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.1)
+                
+                layer.enabled: true
+                layer.effect: DropShadow {
+                    transparentBorder: true; verticalOffset: 4; radius: 12; samples: 24; color: Qt.rgba(0,0,0,0.4)
+                }
+            }
+            
+            StyledText {
+                id: tooltipLabel
+                anchors.centerIn: parent
+                text: globalTooltip.text
+                color: Theme.surfaceText || "white"
+                font.pixelSize: 12
+                font.weight: Font.Medium
+            }
+            
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+            opacity: visible ? 1 : 0
+        }
+        
+
 
         // --- Content ---
         Item {
@@ -239,9 +308,9 @@ PluginComponent {
                 width: 320
                 height: root.settingsExpanded ? settingsCol.implicitHeight + 40 : 0
                 radius: 24
-                color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, 0.85)
+                color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.12)
+                border.color: Qt.rgba(1, 1, 1, 0.1)
                 clip: true
                 
                 // Position strictly above the right side of the pill
@@ -310,6 +379,7 @@ PluginComponent {
                             }
                             SettingToggle { 
                                 label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
+                                visible: !root.isVideoMode
                                 onToggled: { root.saveToDisk = active; root._save("saveToDisk", root.saveToDisk) }
                             }
                             SettingToggle { 
@@ -322,14 +392,14 @@ PluginComponent {
                                 onToggled: { root.showPointer = active; root._save("showPointer", root.showPointer) }
                             }
                             SettingToggle { 
-                                label: "Screenshot Editor"; iconName: "output"; active: root.stdout
-                                visible: !root.isVideoMode
-                                onToggled: { root.stdout = active; root._save("stdout", root.stdout) }
+                                label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                onToggled: { root.showNotify = active; root._save("showNotify", root.showNotify) }
                             }
                             SettingToggle { 
-                                label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                label: "Show Recording Pill"; iconName: "pill"; active: root.showRecPill
+                                visible: root.isVideoMode
                                 isLast: true
-                                onToggled: { root.showNotify = active; root._save("showNotify", root.showNotify) }
+                                onToggled: { root.showRecPill = active; root._save("showRecPill", root.showRecPill) }
                             }
                         }
                     }
@@ -473,14 +543,21 @@ PluginComponent {
                     id: pillBg
                     anchors.fill: parent
                     radius: height / 2
-                    color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, 0.85)
+                    color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, root.toolbarOpacity)
                     border.width: 1
-                    border.color: Qt.rgba(1, 1, 1, 0.15)
+                    border.color: Qt.rgba(1, 1, 1, 0.1)
                     
                     layer.enabled: true
                     layer.effect: DropShadow {
-                        transparentBorder: true; verticalOffset: 6; radius: 24; samples: 48; color: Qt.rgba(0,0,0,0.4)
+                        transparentBorder: true; verticalOffset: 8; radius: 24; samples: 64; color: Qt.rgba(0,0,0,0.3)
                     }
+                }
+
+                MouseArea {
+                    id: toolbarMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: (mouse) => mouse.accepted = true
                 }
 
                 RowLayout {
@@ -488,69 +565,81 @@ PluginComponent {
                     anchors.centerIn: parent
                     spacing: 16
 
-                    // Photo/Video Toggle
-                    Rectangle {
-                        width: 88; height: 40; radius: 20
-                        color: Qt.rgba(1, 1, 1, 0.08)
-                        
-                        Rectangle {
-                            width: 42; height: 36; radius: 18
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: root.isVideoMode ? 44 : 2
-                            color: Theme.primary
-                            Behavior on x { NumberAnimation { duration: 250; easing.type: Easing.OutQuint } }
+                    // Mode Selection (Segmented)
+                    Row {
+                        spacing: 6 // Match capture modes gap
+                        ToolbarBtn { 
+                            isFirst: true; iconName: "photo_camera"; active: !root.isVideoMode
+                            tooltipText: "Photo Mode"
+                            onClicked: root.isVideoMode = false
                         }
-
-                        Row {
-                            anchors.fill: parent
-                            Item {
-                                width: 44; height: 40
-                                DankIcon { name: "photo_camera"; size: 20; anchors.centerIn: parent; color: !root.isVideoMode ? Theme.onPrimary : Theme.surfaceText }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.isVideoMode = false }
-                            }
-                            Item {
-                                width: 44; height: 40
-                                DankIcon { name: "videocam"; size: 20; anchors.centerIn: parent; color: root.isVideoMode ? Theme.onPrimary : Theme.surfaceText }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.isVideoMode = true }
-                            }
+                        ToolbarBtn { 
+                            isLast: true; iconName: "videocam"; active: root.isVideoMode
+                            tooltipText: "Video Mode"
+                            onClicked: root.isVideoMode = true
                         }
                     }
 
-                    Rectangle { width: 1; height: 28; color: Qt.rgba(1, 1, 1, 0.15) }
+                    Rectangle { width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
 
                     // Modes
                     Row {
-                        spacing: 8
+                        id: modeRow
+                        spacing: 6
                         ToolbarBtn { 
+                            isFirst: true
                             iconName: "screenshot_region"
                             active: root.captureMode === "interactive"
                             tooltipText: "Interactive Region"
-                            visible: !root.isVideoMode
-                            onClicked: { root.handleCapture("interactive"); } 
+                            onClicked: { root.captureMode = "interactive"; } 
                         }
                         ToolbarBtn { 
-                            iconName: root.isRecording && root.captureMode === "full" ? "stop_circle" : "monitor"; 
+                            iconName: "monitor"; 
                             active: root.captureMode === "full"
-                            tooltipText: root.isRecording && root.captureMode === "full" ? "Stop Recording" : (root.isVideoMode ? "Record Monitor" : "Focused Screen")
-                            onClicked: { root.handleCapture("full"); } 
+                            tooltipText: root.isVideoMode ? "Record Monitor" : "Focused Screen"
+                            onClicked: { root.captureMode = "full"; } 
                         }
                         ToolbarBtn { 
-                            iconName: root.isRecording && root.captureMode === "all" ? "stop_circle" : "monitor_weight"; 
+                            isLast: true
+                            iconName: "monitor_weight"; 
                             active: root.captureMode === "all"
-                            tooltipText: root.isRecording && root.captureMode === "all" ? "Stop Recording" : (root.isVideoMode ? "Record All" : "All Screens")
-                            onClicked: { root.handleCapture("all"); } 
+                            tooltipText: root.isVideoMode ? "Record All" : "All Screens"
+                            onClicked: { root.captureMode = "all"; } 
                         }
                     }
 
-                    Rectangle { width: 1; height: 28; color: Qt.rgba(1, 1, 1, 0.15) }
+                    Rectangle { width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
 
                     // Actions
                     Row {
-                        spacing: 8
-                        ToolbarBtn { id: settingsBtn; iconName: "settings"; active: root.settingsExpanded; onClicked: root.settingsExpanded = !root.settingsExpanded }
-                        ToolbarBtn { iconName: "close"; onClicked: root.close() }
+                        id: actionRow
+                        spacing: 6
+                        ToolbarBtn { isFirst: true; id: settingsBtn; iconName: "settings"; active: root.settingsExpanded; onClicked: root.settingsExpanded = !root.settingsExpanded }
+                        ToolbarBtn { isLast: true; iconName: "close"; hoverColor: "#FF4444"; animateRotate: true; onClicked: root.close() }
                     }
+
                 }
+            }
+
+            // Instruction Hint Pill
+            Rectangle {
+                width: hintText.implicitWidth + 32; height: 32; radius: 16
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 8
+                color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, root.toolbarOpacity * 0.8)
+                border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.05)
+                
+                StyledText {
+                    id: hintText
+                    anchors.centerIn: parent
+                    text: "Press Space To Capture"
+                    font.pixelSize: 11; font.weight: Font.Medium
+                    color: Theme.surfaceText || "#666666"
+                }
+                
+                opacity: overlay.visible && !root.isRecording ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 300 } }
             }
         }
         
@@ -561,24 +650,56 @@ PluginComponent {
     component ToolbarBtn: Item {
         property string iconName: ""
         property bool active: false
+        property bool isFirst: false
+        property bool isLast: false
+        property bool animateRotate: false
         property string tooltipText: ""
+        property color hoverColor: "transparent"
         signal clicked()
-        width: 44; height: 44
+        width: 52; height: 40
         
         Rectangle {
-            anchors.fill: parent; radius: 22
-            color: active ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3) : (ma.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent")
-            border.width: active ? 1 : 0; border.color: Theme.primary
+            id: btnBg
+            anchors.fill: parent
+            radius: active ? 20 : 12 
+            color: active ? (Theme.primary || "#8D4D57") : 
+                   (ma.containsMouse ? (hoverColor != "transparent" ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.2) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.05)) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.03))
+            border.width: active ? 0 : 1
+            border.color: Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.05)
+            
+            scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.05 : 1.0)
             Behavior on color { ColorAnimation { duration: 200 } }
+            Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+            Behavior on radius { NumberAnimation { duration: 450; easing.type: Easing.OutQuint } }
         }
-        DankIcon { name: parent.iconName; size: 22; anchors.centerIn: parent; color: active ? Theme.primary : Theme.surfaceText }
+        DankIcon { 
+            id: icon
+            name: parent.iconName; size: 20; anchors.centerIn: parent; 
+            color: active ? (Theme.onPrimary || "white") : (ma.containsMouse ? (hoverColor != "transparent" && hoverColor != "#00000000" ? hoverColor : (Theme.primary || "#8D4D57")) : (Theme.surfaceText || "#333333"))
+            opacity: 1
+            
+            // Interaction animations: Tilt for regular icons, full spin for close
+            rotation: parent.animateRotate ? (ma.containsMouse ? 360 : 0) : (ma.containsMouse ? 12 : 0)
+            y: (ma.containsMouse && !parent.animateRotate) ? -4 : 0
+            
+            Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
+            Behavior on y { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
+        }
         MouseArea { 
             id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; 
             onClicked: parent.clicked() 
-            onEntered: { if (parent.tooltipText !== "") globalTooltip.show(parent.tooltipText, parent) }
-            onExited: globalTooltip.hide()
+            onEntered: { 
+                if (parent.tooltipText !== "") {
+                    globalTooltip.text = parent.tooltipText;
+                    globalTooltip.targetItem = parent;
+                    globalTooltip.visible = true;
+                }
+            }
+            onExited: globalTooltip.visible = false
         }
     }
+
+
 
     component SettingToggle: Rectangle {
         id: toggleRoot
@@ -587,8 +708,14 @@ PluginComponent {
         property bool active: false
         property bool isLast: false
         signal toggled()
-        width: parent.width; height: 44
+        
+        width: parent.width; height: visible ? 44 : 0
         color: ma.containsMouse ? Qt.rgba(Theme.primary.r || 1, Theme.primary.g || 1, Theme.primary.b || 1, 0.08) : "transparent"
+        clip: true
+        
+        Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuart } }
+        Behavior on opacity { NumberAnimation { duration: 400 } }
+        opacity: visible ? 1 : 0
         Behavior on color { ColorAnimation { duration: 150 } }
         
         RowLayout {
@@ -621,7 +748,8 @@ PluginComponent {
     }
 
     DankTooltipV2 {
-        id: globalTooltip
+        id: legacyTooltip // Keeping it just in case, but using the local globalTooltip for positioning
+        visible: false
     }
 
     // =========================================================================
@@ -629,36 +757,85 @@ PluginComponent {
     // =========================================================================
     PanelWindow {
         id: recPill
-        visible: root.isRecording
+        visible: root.isRecording && root.showRecPill
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "dms-rec-pill"
-        anchors { top: true; right: true }
-        margins { top: recPillMarginTop; right: recPillMarginRight }
-        width: recPillExpanded ? 310 : 64
-        height: 44
+        anchors { top: true } // Top-Centered by default if left/right are not set
+        margins { top: recPillMarginTop }
+        width: recPillExpanded ? 340 : 64
+        height: 52 // Slightly taller like SS
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
+
+        // Local Tooltip for Recording Pill
+        Item {
+            id: pillTooltip
+            visible: false
+            property string text: ""
+            property Item targetItem: null
+            z: 999
+            
+            x: targetItem ? targetItem.mapToItem(recPill.contentItem, 0, 0).x + (targetItem.width - width) / 2 : 0
+            y: targetItem ? targetItem.mapToItem(recPill.contentItem, 0, 0).y - height - 8 : 0
+            
+            width: pillTooltipLabel.implicitWidth + 20
+            height: 28
+            
+            Rectangle {
+                anchors.fill: parent
+                radius: 6
+                color: Qt.rgba(0.1, 0.1, 0.1, 0.95)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.1)
+                
+                layer.enabled: true
+                layer.effect: DropShadow {
+                    transparentBorder: true; verticalOffset: 2; radius: 8; samples: 16; color: Qt.rgba(0,0,0,0.4)
+                }
+            }
+            
+            StyledText {
+                id: pillTooltipLabel
+                anchors.centerIn: parent
+                text: pillTooltip.text
+                color: "white"
+                font.pixelSize: 11
+                font.weight: Font.Medium
+            }
+            
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+            opacity: visible ? 1 : 0
+        }
 
         property bool recPillExpanded: false
         property int recPillMarginTop: 12
         property int recPillMarginRight: 12
+        property bool isAnimating: widthAnim.running
 
-        Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+        Behavior on width { 
+            id: widthAnim
+            NumberAnimation { duration: 350; easing.type: Easing.OutQuint } 
+        }
 
         // Shadow (separate rect behind to avoid layer clipping issues)
         Rectangle {
             anchors.fill: parent
-            anchors.margins: -2
-            radius: (parent.height + 4) / 2
+            anchors.margins: -4
+            radius: (recPill.height + 8) / 2
             color: "transparent"
-            border.width: 0
+            visible: !recPill.isAnimating // Disable shadow during animation to fix stuttering
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: 2
+                anchors.margins: 4
                 radius: recPill.height / 2
-                color: Qt.rgba(0, 0, 0, 0.35)
-                anchors.verticalCenterOffset: 3
+                color: Qt.rgba(0, 0, 0, 0.4)
+                anchors.verticalCenterOffset: 6 // Match main toolbar
+                
+                layer.enabled: true
+                layer.effect: DropShadow {
+                    transparentBorder: true; verticalOffset: 8; radius: 32; samples: 48; color: Qt.rgba(0,0,0,0.6)
+                }
             }
         }
 
@@ -666,9 +843,14 @@ PluginComponent {
             id: recPillBg
             anchors.fill: parent
             radius: height / 2
-            color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, 0.92)
+            color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, root.pillOpacity)
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.12)
+            border.color: Qt.rgba(1, 1, 1, 0.1)
+            
+            layer.enabled: true
+            layer.effect: DropShadow {
+                transparentBorder: true; verticalOffset: 6; radius: 16; samples: 32; color: Qt.rgba(0,0,0,0.2)
+            }
         }
 
         // ---- Collapsed: dot + timer + arrow (click or right-drag to reposition) ----
@@ -681,6 +863,9 @@ PluginComponent {
                 anchors.centerIn: parent
                 spacing: 6
 
+                // Expand arrow on the LEFT now
+                DankIcon { name: "chevron_left"; size: 16; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
+
                 // Pulsing dot
                 Rectangle {
                     width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
@@ -692,9 +877,6 @@ PluginComponent {
                         NumberAnimation { to: 1.0; duration: 800 }
                     }
                 }
-
-                // Expand arrow
-                DankIcon { name: "chevron_left"; size: 16; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
             }
 
             MouseArea {
@@ -747,16 +929,22 @@ PluginComponent {
 
             RowLayout {
                 anchors.centerIn: parent
-                spacing: 8
+                spacing: 12
+
+                // Collapse arrow
+                DankIcon { 
+                    name: "chevron_left"; size: 16; color: Theme.surfaceText
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: recPill.recPillExpanded = false }
+                }
 
                 // Pulsing red recording dot
                 Rectangle {
-                    width: 10; height: 10; radius: 5
-                    color: root.isPaused ? Theme.surfaceVariantText : "#FF4444"
+                    width: 12; height: 12; radius: 6
+                    color: root.isPaused ? Theme.surfaceVariantText : "#FF5555"
                     SequentialAnimation on opacity {
                         running: root.isRecording && !root.isPaused
                         loops: Animation.Infinite
-                        NumberAnimation { to: 0.3; duration: 800 }
+                        NumberAnimation { to: 0.4; duration: 800 }
                         NumberAnimation { to: 1.0; duration: 800 }
                     }
                 }
@@ -764,59 +952,33 @@ PluginComponent {
                 // Timer
                 StyledText {
                     text: root.formatTime(root.recordingElapsed)
-                    font.pixelSize: 13
+                    font.pixelSize: 15; font.weight: Font.DemiBold
                     font.family: "monospace"
-                    color: root.isPaused ? Theme.surfaceVariantText : Theme.surfaceText
+                    color: Theme.surfaceText
                 }
 
-                Rectangle { width: 1; height: 24; color: Qt.rgba(1, 1, 1, 0.15) }
+                Rectangle { width: 1; height: 28; color: Qt.rgba(1, 1, 1, 0.1) }
 
                 // Pause / Resume
-                Item {
-                    width: 28; height: 28
-                    Rectangle {
-                        anchors.fill: parent; radius: 14
-                        color: recPauseMa.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                    }
-                    DankIcon {
-                        name: root.isPaused ? "play_arrow" : "pause"
-                        size: 18; anchors.centerIn: parent; color: Theme.surfaceText
-                    }
-                    MouseArea {
-                        id: recPauseMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                        onClicked: root.isPaused ? root.resumeRecording() : root.pauseRecording()
-                    }
+                DankIcon {
+                    name: root.isPaused ? "play_arrow" : "pause"
+                    size: 22; color: Theme.surfaceText
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.isPaused ? root.resumeRecording() : root.pauseRecording() }
                 }
 
                 // Stop
-                Item {
-                    width: 28; height: 28
-                    Rectangle {
-                        anchors.fill: parent; radius: 14
-                        color: recStopMa.containsMouse ? Qt.rgba(1, 0.2, 0.2, 0.25) : "transparent"
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                    }
-                    DankIcon { name: "stop"; size: 18; anchors.centerIn: parent; color: "#FF4444" }
-                    MouseArea {
-                        id: recStopMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                        onClicked: root.stopRecording()
-                    }
+                DankIcon { 
+                    name: "stop"; size: 22; color: "#FF4444" 
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.stopRecording() }
                 }
 
-                Rectangle { width: 1; height: 24; color: Qt.rgba(1, 1, 1, 0.15) }
+                Rectangle { width: 1; height: 28; color: Qt.rgba(1, 1, 1, 0.1) }
 
                 // Quick Screenshot
-                Item {
-                    width: 28; height: 28
-                    Rectangle {
-                        anchors.fill: parent; radius: 14
-                        color: recSsMa.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                    }
-                    DankIcon { name: "photo_camera"; size: 18; anchors.centerIn: parent; color: Theme.surfaceText }
-                    MouseArea {
-                        id: recSsMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                DankIcon { 
+                    name: "photo_camera"; size: 22; color: Theme.surfaceText 
+                    MouseArea { 
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             let ssCmd = "dms screenshot";
                             ssCmd += root.showPointer ? " --cursor=on" : " --cursor=off";
@@ -826,52 +988,13 @@ PluginComponent {
                     }
                 }
 
-                // Drag handle
-                Item {
-                    width: 28; height: 28
-                    Rectangle {
-                        anchors.fill: parent; radius: 14
-                        color: recDragMa.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                    }
-                    DankIcon { name: "drag_indicator"; size: 18; anchors.centerIn: parent; color: Theme.surfaceVariantText }
-                    MouseArea {
-                        id: recDragMa; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                        property int startX: 0
-                        property int startY: 0
-                        property int startMarginR: 0
-                        property int startMarginT: 0
-
-                        onPressed: function(mouse) {
-                            startX = mouse.x;
-                            startY = mouse.y;
-                            startMarginR = recPill.recPillMarginRight;
-                            startMarginT = recPill.recPillMarginTop;
-                        }
-                        onPositionChanged: function(mouse) {
-                            if (pressed) {
-                                let dx = mouse.x - startX;
-                                let dy = mouse.y - startY;
-                                recPill.recPillMarginRight = Math.max(4, startMarginR - dx);
-                                recPill.recPillMarginTop = Math.max(4, startMarginT + dy);
-                            }
-                        }
-                    }
-                }
-
-                Rectangle { width: 1; height: 24; color: Qt.rgba(1, 1, 1, 0.15) }
-
-                // Collapse arrow
-                Item {
-                    width: 24; height: 24
-                    DankIcon { name: "chevron_right"; size: 16; anchors.centerIn: parent; color: Theme.surfaceVariantText }
-                    MouseArea {
-                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: recPill.recPillExpanded = false
-                    }
+                // Settings / Menu icon
+                DankIcon { 
+                    name: "menu"; size: 22; color: Theme.surfaceVariantText 
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.open() }
                 }
             }
         }
+
     }
 }
