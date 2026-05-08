@@ -567,7 +567,7 @@ PluginComponent {
 
                     // Mode Selection (Segmented)
                     Row {
-                        spacing: 6 // Match capture modes gap
+                        spacing: 4
                         ToolbarBtn { 
                             isFirst: true; iconName: "photo_camera"; active: !root.isVideoMode
                             tooltipText: "Photo Mode"
@@ -585,7 +585,7 @@ PluginComponent {
                     // Modes
                     Row {
                         id: modeRow
-                        spacing: 6
+                        spacing: 4
                         ToolbarBtn { 
                             isFirst: true
                             iconName: "screenshot_region"
@@ -613,7 +613,7 @@ PluginComponent {
                     // Actions
                     Row {
                         id: actionRow
-                        spacing: 6
+                        spacing: 4
                         ToolbarBtn { isFirst: true; id: settingsBtn; iconName: "settings"; active: root.settingsExpanded; onClicked: root.settingsExpanded = !root.settingsExpanded }
                         ToolbarBtn { isLast: true; iconName: "close"; hoverColor: "#FF4444"; animateRotate: true; onClicked: root.close() }
                     }
@@ -658,19 +658,48 @@ PluginComponent {
         signal clicked()
         width: 52; height: 40
         
-        Rectangle {
-            id: btnBg
+        // Move scale to the root to avoid clipping artifacts
+        scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.05 : 1.0)
+        Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+
+        Item {
             anchors.fill: parent
-            radius: active ? 20 : 12 
-            color: active ? (Theme.primary || "#8D4D57") : 
-                   (ma.containsMouse ? (hoverColor != "transparent" ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.2) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.05)) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.03))
-            border.width: active ? 0 : 1
-            border.color: Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.05)
+            clip: true // Clips the background geometry but scales with parent
             
-            scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.05 : 1.0)
-            Behavior on color { ColorAnimation { duration: 200 } }
-            Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
-            Behavior on radius { NumberAnimation { duration: 450; easing.type: Easing.OutQuint } }
+            Rectangle {
+                id: btnBg
+                property real cornerOffset: 14
+                x: active ? 0 : (isFirst ? 0 : (isLast ? -cornerOffset : -cornerOffset))
+                width: active ? parent.width : (isFirst ? parent.width + cornerOffset : (isLast ? parent.width + cornerOffset : parent.width + cornerOffset * 2))
+                height: parent.height
+                radius: 20
+                
+                color: active ? (Theme.primary || "#8D4D57") : 
+                       (ma.containsMouse ? (hoverColor != "transparent" ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.2) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.05)) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.03))
+                
+                // Custom Ripple Effect
+                Rectangle {
+                    id: rippleObj
+                    anchors.centerIn: parent
+                    width: parent.width * 1.5; height: width
+                    radius: width / 2
+                    color: Qt.rgba(1, 1, 1, 0.12)
+                    opacity: 0; scale: 0
+                    
+                    states: State {
+                        name: "pressed"; when: ma.pressed
+                        PropertyChanges { target: rippleObj; opacity: 1; scale: 1 }
+                    }
+                    transitions: Transition {
+                        NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+                    }
+                }
+
+                Behavior on x { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+                Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+                Behavior on color { ColorAnimation { duration: 250 } }
+                Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+            }
         }
         DankIcon { 
             id: icon
@@ -712,6 +741,25 @@ PluginComponent {
         width: parent.width; height: visible ? 44 : 0
         color: ma.containsMouse ? Qt.rgba(Theme.primary.r || 1, Theme.primary.g || 1, Theme.primary.b || 1, 0.08) : "transparent"
         clip: true
+        radius: 12
+        
+        // Custom Ripple Effect
+        Rectangle {
+            id: toggleRipple
+            anchors.centerIn: parent
+            width: parent.width * 1.2; height: width
+            radius: width / 2
+            color: Qt.rgba(Theme.primary.r || 1, Theme.primary.g || 1, Theme.primary.b || 1, 0.12)
+            opacity: 0; scale: 0
+            
+            states: State {
+                name: "pressed"; when: ma.pressed
+                PropertyChanges { target: toggleRipple; opacity: 1; scale: 1 }
+            }
+            transitions: Transition {
+                NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+            }
+        }
         
         Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuart } }
         Behavior on opacity { NumberAnimation { duration: 400 } }
