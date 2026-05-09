@@ -674,7 +674,7 @@ PluginComponent {
                 height: parent.height
                 radius: 20
                 
-                color: active ? (Theme.primary || "#8D4D57") : 
+                color: active ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : 
                        (ma.containsMouse ? (hoverColor != "transparent" ? Qt.rgba(hoverColor.r, hoverColor.g, hoverColor.b, 0.2) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.05)) : Qt.rgba(Theme.onSurface.r, Theme.onSurface.g, Theme.onSurface.b, 0.03))
                 
                 // Custom Ripple Effect
@@ -704,7 +704,7 @@ PluginComponent {
         DankIcon { 
             id: icon
             name: parent.iconName; size: 20; anchors.centerIn: parent; 
-            color: active ? (Theme.onPrimary || "white") : (ma.containsMouse ? (hoverColor != "transparent" && hoverColor != "#00000000" ? hoverColor : (Theme.primary || "#8D4D57")) : (Theme.surfaceText || "#333333"))
+            color: active ? Theme.primary : (ma.containsMouse ? (hoverColor != "transparent" && hoverColor != "#00000000" ? hoverColor : (Theme.primary || "#8D4D57")) : (Theme.surfaceText || "#333333"))
             opacity: 1
             
             // Interaction animations: Tilt for regular icons, full spin for close
@@ -796,8 +796,61 @@ PluginComponent {
     }
 
     DankTooltipV2 {
-        id: legacyTooltip // Keeping it just in case, but using the local globalTooltip for positioning
+        id: legacyTooltip
         visible: false
+    }
+
+    // Fullscreen transparent overlay for stable global dragging
+    PanelWindow {
+        id: dragOverlay
+        visible: recPill.isDragging
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.namespace: "dms-drag-overlay"
+        color: "transparent"
+        
+        anchors {
+            top: true
+            bottom: true
+            left: true
+            right: true
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.ClosedHandCursor
+            
+            property int startX: 0
+            property int startY: 0
+            property int startMarginR: 0
+            property int startMarginT: 0
+            property bool firstEvent: true
+            
+            onVisibleChanged: { 
+                if (visible) {
+                    firstEvent = true;
+                    startMarginR = recPill.recPillMarginRight;
+                    startMarginT = recPill.recPillMarginTop;
+                }
+            }
+            
+            onPositionChanged: function(mouse) {
+                if (recPill.isDragging) {
+                    if (firstEvent) {
+                        startX = mouse.x;
+                        startY = mouse.y;
+                        firstEvent = false;
+                        return;
+                    }
+                    let dx = mouse.x - startX;
+                    let dy = mouse.y - startY;
+                    recPill.recPillMarginRight = Math.max(4, startMarginR - dx);
+                    recPill.recPillMarginTop = Math.max(4, startMarginT + dy);
+                }
+            }
+            onClicked: recPill.isDragging = false
+        }
     }
 
     // =========================================================================
@@ -808,10 +861,19 @@ PluginComponent {
         visible: root.isRecording && root.showRecPill
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "dms-rec-pill"
-        anchors { top: true } // Top-Centered by default if left/right are not set
-        margins { top: recPillMarginTop }
-        width: recPillExpanded ? 340 : 64
-        height: 52 // Slightly taller like SS
+        
+        anchors {
+            top: true
+            right: true
+        }
+        margins { 
+            top: recPillMarginTop 
+            right: recPillMarginRight
+        }
+
+        width: (recPillExpanded ? 460 : 260) // Scaled down slightly
+        height: 60 // Scaled down to 60
+        Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
 
@@ -860,171 +922,192 @@ PluginComponent {
         property int recPillMarginRight: 12
         property bool isAnimating: widthAnim.running
 
+        // Dragging state
+        property bool isDragging: false
+
         Behavior on width { 
             id: widthAnim
             NumberAnimation { duration: 350; easing.type: Easing.OutQuint } 
         }
 
-        // Shadow (separate rect behind to avoid layer clipping issues)
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: -4
-            radius: (recPill.height + 8) / 2
-            color: "transparent"
-            visible: !recPill.isAnimating // Disable shadow during animation to fix stuttering
-
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 4
-                radius: recPill.height / 2
-                color: Qt.rgba(0, 0, 0, 0.4)
-                anchors.verticalCenterOffset: 6 // Match main toolbar
-                
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true; verticalOffset: 8; radius: 32; samples: 48; color: Qt.rgba(0,0,0,0.6)
-                }
-            }
-        }
+        // Timer removed. Using dragOverlay.
 
         Rectangle {
             id: recPillBg
             anchors.fill: parent
             radius: height / 2
-            color: Qt.rgba(Theme.surfaceContainerHigh.r || Theme.surface.r, Theme.surfaceContainerHigh.g || Theme.surface.g, Theme.surfaceContainerHigh.b || Theme.surface.b, root.pillOpacity)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.1)
+            // Fixed high opacity as requested, removing dependency on settings
+            color: Qt.rgba(Theme.surface.r || 1, Theme.surface.g || 1, Theme.surface.b || 1, 0.98)
+            border.width: recPill.isDragging ? 2 : 1
+            border.color: recPill.isDragging ? Theme.primary : Qt.rgba(0, 0, 0, 0.1)
             
-            layer.enabled: true
-            layer.effect: DropShadow {
-                transparentBorder: true; verticalOffset: 6; radius: 16; samples: 32; color: Qt.rgba(0,0,0,0.2)
-            }
+            layer.enabled: false // Shadows removed as requested
         }
 
-        // ---- Collapsed: dot + timer + arrow (click or right-drag to reposition) ----
+        // ---- Collapsed State: [Dot] [Time] [Waveform] [Stop] ----
         Item {
             anchors.fill: parent
             visible: !recPill.recPillExpanded
             clip: true
 
-            Row {
-                anchors.centerIn: parent
-                spacing: 6
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 24; anchors.rightMargin: 16; anchors.topMargin: 6; anchors.bottomMargin: 6
+                spacing: 16
 
-                // Expand arrow on the LEFT now
-                DankIcon { name: "chevron_left"; size: 16; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
-
-                // Pulsing dot
-                Rectangle {
-                    width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
-                    color: root.isPaused ? Theme.surfaceVariantText : "#FF4444"
-                    SequentialAnimation on opacity {
-                        running: root.isRecording && !root.isPaused
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 0.3; duration: 800 }
-                        NumberAnimation { to: 1.0; duration: 800 }
+                // Info block
+                Row {
+                    spacing: 10
+                    Layout.fillWidth: true
+                    
+                    DankIcon { 
+                        name: "chevron_left"; size: 16; color: Theme.surfaceText; opacity: 0.4
+                        anchors.verticalCenter: parent.verticalCenter
+                        rotation: 0 // Points Right to Expand
                     }
+
+                    Rectangle {
+                        width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
+                        color: root.isPaused ? Theme.surfaceVariantText : "#FF4444"
+                        SequentialAnimation on opacity {
+                            running: root.isRecording && !root.isPaused
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.4; duration: 800; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.0; duration: 800; easing.type: Easing.InOutSine }
+                        }
+                    }
+                    StyledText {
+                        id: collapsedTimer
+                        text: root.formatTime(root.recordingElapsed)
+                        font.pixelSize: 22; font.weight: Font.Medium; color: "#333333"
+                        font.family: "JetBrains Mono, monospace" // Monospace to prevent shifting
+                        width: 70 // Fixed width to prevent shifting neighbors
+                        horizontalAlignment: Text.AlignLeft
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    DankIcon { 
+                        name: "graphic_eq"; size: 18; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        SequentialAnimation on scale {
+                            running: root.isRecording && !root.isPaused
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.8; duration: 600; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.1; duration: 600; easing.type: Easing.InOutSine }
+                        }
+                    }
+                }
+
+                // Squircle Stop Button
+                Rectangle {
+                    width: 40; height: 40; radius: 12
+                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                    DankIcon { name: "stop"; size: 20; color: Theme.primary; anchors.centerIn: parent }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.stopRecording() }
                 }
             }
 
+            // Background MouseArea for dragging (RightButton)
             MouseArea {
                 anchors.fill: parent
+                z: -1
                 cursorShape: Qt.PointingHandCursor
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                property int startX: 0
-                property int startY: 0
-                property int startMarginR: 0
-                property int startMarginT: 0
-                property bool dragging: false
-
+                acceptedButtons: Qt.RightButton
+                
                 onClicked: function(mouse) {
-                    if (mouse.button === Qt.LeftButton && !dragging) {
-                        recPill.recPillExpanded = true;
-                    }
+                    recPill.isDragging = !recPill.isDragging;
                 }
-                onPressed: function(mouse) {
-                    if (mouse.button === Qt.RightButton) {
-                        dragging = true;
-                        startX = mouse.x;
-                        startY = mouse.y;
-                        startMarginR = recPill.recPillMarginRight;
-                        startMarginT = recPill.recPillMarginTop;
-                        cursorShape = Qt.ClosedHandCursor;
-                    }
-                }
-                onPositionChanged: function(mouse) {
-                    if (dragging) {
-                        let dx = mouse.x - startX;
-                        let dy = mouse.y - startY;
-                        recPill.recPillMarginRight = Math.max(4, startMarginR - dx);
-                        recPill.recPillMarginTop = Math.max(4, startMarginT + dy);
-                    }
-                }
-                onReleased: function(mouse) {
-                    if (mouse.button === Qt.RightButton) {
-                        dragging = false;
-                        cursorShape = Qt.PointingHandCursor;
-                    }
-                }
+            }
+
+            // Tap to expand
+            TapHandler {
+                onTapped: recPill.recPillExpanded = true
             }
         }
 
-        // ---- Expanded: all controls + collapse arrow on right ----
-        Item {
+    // ---- Expanded State ----
+    Item {
+        anchors.fill: parent
+        visible: recPill.recPillExpanded
+        clip: true
+
+        RowLayout {
             anchors.fill: parent
-            visible: recPill.recPillExpanded
-            clip: true
+            anchors.leftMargin: 16; anchors.rightMargin: 16; anchors.topMargin: 6; anchors.bottomMargin: 6
+            spacing: 12
 
-            RowLayout {
-                anchors.centerIn: parent
-                spacing: 12
-
-                // Collapse arrow
+            // Collapse Handle (Moved to left and rotated to point left)
+            Rectangle {
+                width: 36; height: 40; radius: 10
+                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
                 DankIcon { 
-                    name: "chevron_left"; size: 16; color: Theme.surfaceText
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: recPill.recPillExpanded = false }
+                    name: "chevron_right"; size: 18; color: Theme.primary; anchors.centerIn: parent 
+                    rotation: 180 // Points Left to Collapse
                 }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: recPill.recPillExpanded = false }
+            }
 
-                // Pulsing red recording dot
-                Rectangle {
-                    width: 12; height: 12; radius: 6
-                    color: root.isPaused ? Theme.surfaceVariantText : "#FF5555"
-                    SequentialAnimation on opacity {
-                        running: root.isRecording && !root.isPaused
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 0.4; duration: 800 }
-                        NumberAnimation { to: 1.0; duration: 800 }
+            // Middle Info Block (Boxed)
+            Rectangle {
+                Layout.fillWidth: true; Layout.fillHeight: true
+                Layout.margins: 4
+                radius: 12
+                color: "transparent"
+                border.width: 1; border.color: Qt.rgba(0,0,0,0.05)
+                
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 12
+                    Rectangle {
+                        width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
+                        color: root.isPaused ? Theme.surfaceVariantText : "#FF4444"
+                        SequentialAnimation on opacity {
+                            running: root.isRecording && !root.isPaused
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.4; duration: 800; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.0; duration: 800; easing.type: Easing.InOutSine }
+                        }
+                    }
+                    StyledText {
+                        id: expandedTimer
+                        text: root.formatTime(root.recordingElapsed)
+                        font.pixelSize: 22; font.weight: Font.Medium; color: "#333333"
+                        font.family: "JetBrains Mono, monospace"
+                        width: 70
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    DankIcon { 
+                        name: "graphic_eq"; size: 18; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.5) 
+                        SequentialAnimation on scale {
+                            running: root.isRecording && !root.isPaused
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.8; duration: 600; easing.type: Easing.InOutSine }
+                            NumberAnimation { to: 1.1; duration: 600; easing.type: Easing.InOutSine }
+                        }
                     }
                 }
+            }
 
-                // Timer
-                StyledText {
-                    text: root.formatTime(root.recordingElapsed)
-                    font.pixelSize: 15; font.weight: Font.DemiBold
-                    font.family: "monospace"
-                    color: Theme.surfaceText
-                }
-
-                Rectangle { width: 1; height: 28; color: Qt.rgba(1, 1, 1, 0.1) }
-
-                // Pause / Resume
-                DankIcon {
-                    name: root.isPaused ? "play_arrow" : "pause"
-                    size: 22; color: Theme.surfaceText
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.isPaused ? root.resumeRecording() : root.pauseRecording() }
-                }
-
-                // Stop
-                DankIcon { 
-                    name: "stop"; size: 22; color: "#FF4444" 
+            // Action Block
+            Row {
+                spacing: 6
+                Layout.alignment: Qt.AlignVCenter
+                
+                Rectangle {
+                    width: 40; height: 40; radius: 12
+                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                    DankIcon { name: "stop"; size: 20; color: Theme.primary; anchors.centerIn: parent }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.stopRecording() }
                 }
-
-                Rectangle { width: 1; height: 28; color: Qt.rgba(1, 1, 1, 0.1) }
-
-                // Quick Screenshot
-                DankIcon { 
-                    name: "photo_camera"; size: 22; color: Theme.surfaceText 
+                Rectangle {
+                    width: 40; height: 40; radius: 12
+                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                    DankIcon { name: root.isPaused ? "play_arrow" : "pause"; size: 20; color: Theme.primary; anchors.centerIn: parent }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.isPaused ? root.resumeRecording() : root.pauseRecording() }
+                }
+                Rectangle {
+                    width: 40; height: 40; radius: 12
+                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                    DankIcon { name: "photo_camera"; size: 20; color: Theme.primary; anchors.centerIn: parent }
                     MouseArea { 
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
@@ -1035,14 +1118,27 @@ PluginComponent {
                         }
                     }
                 }
+            }
 
-                // Settings / Menu icon
+            // Drag Handle (Moved to right)
+            Rectangle {
+                width: 36; height: 40; radius: 10
+                color: recPill.isDragging ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
                 DankIcon { 
-                    name: "menu"; size: 22; color: Theme.surfaceVariantText 
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.open() }
+                    name: "open_with"; size: 16; 
+                    color: recPill.isDragging ? (Theme.onPrimary || "white") : Theme.primary; 
+                    anchors.centerIn: parent 
+                }
+                MouseArea { 
+                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton
+                    
+                    onClicked: function(mouse) {
+                        recPill.isDragging = !recPill.isDragging;
+                    }
                 }
             }
         }
-
     }
+}
 }
