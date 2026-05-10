@@ -656,6 +656,7 @@ PluginComponent {
         property bool animateRotate: false
         property string tooltipText: ""
         property color hoverColor: "transparent"
+        property bool isDark: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5)
         signal clicked()
         width: 52; height: 40
         
@@ -705,7 +706,7 @@ PluginComponent {
         DankIcon { 
             id: icon
             name: parent.iconName; size: 20; anchors.centerIn: parent; 
-            color: active ? (Theme.onPrimary || "white") : (ma.containsMouse ? (Theme.primary || "#8D4D57") : (Theme.primary || "#8D4D57"))
+            color: active ? (parent.isDark ? "white" : (Theme.primary || "#8D4D57")) : (Theme.primary || "#8D4D57")
             opacity: active ? 1 : (ma.containsMouse ? 1 : 0.7)
             
             // Interaction animations: Tilt for regular icons, full spin for close
@@ -1198,8 +1199,18 @@ PluginComponent {
 
                 DankIcon { 
                     name: "open_with"; size: 16; 
-                    color: (moveMa.containsMouse || moveMa.pressed || recPill.isDragging) ? (recPill.isDark ? "white" : "black") : Theme.primary
-                    anchors.centerIn: parent 
+                    color: {
+                        if (moveMa.pressed || recPill.isDragging) {
+                            // When physically interacting (Pressed/Dragging), use inverted contrast
+                            return recPill.isDark ? "black" : "white";
+                        } else if (moveMa.containsMouse) {
+                            // When just hovering, keep it the Primary accent color
+                            return Theme.primary;
+                        } else {
+                            // Default idle state
+                            return Theme.primary;
+                        }
+                    }                    anchors.centerIn: parent 
                     rotation: moveMa.containsMouse ? 90 : 0
                     Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
                 }
