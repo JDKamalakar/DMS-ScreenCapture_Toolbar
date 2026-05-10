@@ -13,11 +13,27 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
 [![License](https://img.shields.io/badge/License-DMS-blue.svg?labelColor=27303D&color=0877d2)](https://github.com/DankMaterialShell)
 [![Maintenance Status](https://img.shields.io/badge/Status-Maintained-green.svg?labelColor=27303D&color=946300)](https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar/graphs/commit-activity)
 
-![Screen Capture Toolbar Mockup](/home/JD/.gemini/antigravity/brain/556fd6c8-aedc-4ef9-a295-745fac4e0d23/screen_capture_toolbar_mockup_1778260683671.png)
-
 </div>
 
-## ✨ Features
+## Interface
+
+<div align="center">
+    <img src="assets/Screen_Recording_UI.png" width="49%" alt="Screen Recording UI"/>
+    <img src="assets/Screenshot_UI.png" width="49%" alt="Screenshot UI"/>
+</div>
+<br>
+<div align="center">
+    <img src="assets/Recording_Pill_UI.png" width="30%" alt="Recording Pill Collapsed"/>
+    <img src="assets/Recording_Pill_E_UI.png.png" width="60%" alt="Recording Pill Expanded"/>
+</div>
+
+## Configuration
+
+<div align="center">
+    <img src="assets/Settings.png" width="40%" alt="Settings"/>
+</div>
+
+## Features
 
 - **Premium Glassmorphism**: Translucent, theme-aware "Floating Pill" design that respects system light and dark modes.
 - **Dynamic Segmented Corners**: Intuitive "DankButtonGroup" style buttons that morph between segmented parts and full pills.
@@ -32,7 +48,7 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
     - **All Monitors**: Grab the entire workspace in one go.
 - **Power Workflow**: Trigger captures with `Spacebar` and exit instantly with `Escape`.
 
-## 🚀 Installation
+## Installation
 
 ### Using DMS Plugin Gallery
 1. Open the **DMS Dashboard**.
@@ -49,14 +65,14 @@ git clone https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar.git
 mv DMS-ScreenCapture_Toolbar ~/.config/quickshell/plugins/
 ```
 
-## 🛠 Configuration
+## Configuration
 
 Access the integrated settings directly from the toolbar or via the DMS Settings panel to customize:
 - **Default Formats**: PNG, JPG, PPM for photos; MP4, MKV, FLV for video.
 - **Recording FPS**: 60, 30, or 24 FPS options.
 - **Visibility**: Toggle the **Recording Pill**, system notifications, and mouse pointer visibility.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Feel free to open an issue or submit a pull request if you have ideas for new animations or features.
 
@@ -64,4 +80,22 @@ Contributions are welcome! Feel free to open an issue or submit a pull request i
 
 <div align="center">
     Made with ❤️ for the <b>Dank Material Shell</b> community.
+</div>
+
+### Credits
+
+Built with ❤️ for the [Dank Material Shell](https://github.com/DankMaterialShell) community.
+
+<a href="https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=JDKamalakar/DMS-ScreenCapture_Toolbar" alt="Screen Capture Toolbar contributors" title="Screen Capture Toolbar contributors" width="100"/>
+</a>
+
+### Disclaimer
+
+This application is an independent utility for Dank Material Shell.
+
+### 📜 License
+
+Part of DankMaterialShell. Check the main repository for license information.
+
 </div>
