@@ -13,6 +13,25 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
 [![License](https://img.shields.io/badge/License-DMS-blue.svg?labelColor=27303D&color=0877d2)](https://github.com/DankMaterialShell)
 [![Maintenance Status](https://img.shields.io/badge/Status-Maintained-green.svg?labelColor=27303D&color=946300)](https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar/graphs/commit-activity)
 
+## Download
+
+[![DMS Plugin Gallery](https://img.shields.io/badge/DMS-Plugin%20Gallery-06599d?style=flat-square&logo=linux&logoColor=white)](https://danklinux.com/plugins)
+
+*Requires Dank Material Shell (DMS) 1.0 or higher.*
+
+## Features
+
+<div align="left">
+
+* **Premium Glassmorphism**: Translucent, theme-aware "Floating Pill" design that respects system light and dark modes with 0.98 opacity surfaces.
+* **Repositionable UI**: "Click-to-Move" logic with pixel-perfect absolute coordinate tracking, allowing you to place the recording pill anywhere on your workspace.
+* **Adaptive Theme Support**: Intelligent UI that dynamically flips icon and text colors between black and white based on your theme brightness for guaranteed visibility.
+* **Smart Recording Pill**: A collapsible, high-frequency overlay that displays live recording duration and provides instant access to stop, pause, and screenshot actions.
+* **Tactile Interaction**: Features playful 360° spins, tilt-and-jump micro-animations, and responsive Dank Ripples on every interactive element.
+* **Dynamic Settings**: A context-aware popup bubble that automatically filters capture settings (FPS, Audio, Formats) based on your active mode (Photo vs. Video).
+* **Versatile Capture**: Native support for interactive region selection, active monitor focus, and full-workspace grabbing.
+* **Power Workflow**: Lightning-fast controls with `Spacebar` to trigger captures and `Escape` for instant dismissal.
+
 </div>
 
 ## Interface
@@ -33,54 +52,11 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
     <img src="assets/Settings.png" width="40%" alt="Settings"/>
 </div>
 
-## Features
-
-- **Premium Glassmorphism**: Translucent, theme-aware "Floating Pill" design that respects system light and dark modes.
-- **Dynamic Segmented Corners**: Intuitive "DankButtonGroup" style buttons that morph between segmented parts and full pills.
-- **Context-Aware Settings**: A dynamic popup bubble that filters settings (Format, FPS, Audio) based on the active mode (Photo vs. Video).
-- **Tactile Interaction**:
-    - **360° Spin**: Playful rotation on the close button.
-    - **Tilt & Jump**: High-end micro-animations for toolbar icons.
-    - **Dank Ripples**: Smooth, responsive ripple effects on every click.
-- **Versatile Capture Modes**:
-    - **Interactive Region**: Select exactly what you want to capture.
-    - **Focused Monitor**: Capture the current active screen.
-    - **All Monitors**: Grab the entire workspace in one go.
-- **Power Workflow**: Trigger captures with `Spacebar` and exit instantly with `Escape`.
-
-## Installation
-
-### Using DMS Plugin Gallery
-1. Open the **DMS Dashboard**.
-2. Navigate to the **Plugin Gallery**.
-3. Search for **"Screen Capture Toolbar"**.
-4. Click **Install**.
-
-### Manual Installation
-```bash
-# Clone the repository
-git clone https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar.git
-
-# Move to the Quickshell plugins directory
-mv DMS-ScreenCapture_Toolbar ~/.config/quickshell/plugins/
-```
-
-## Configuration
-
-Access the integrated settings directly from the toolbar or via the DMS Settings panel to customize:
-- **Default Formats**: PNG, JPG, PPM for photos; MP4, MKV, FLV for video.
-- **Recording FPS**: 60, 30, or 24 FPS options.
-- **Visibility**: Toggle the **Recording Pill**, system notifications, and mouse pointer visibility.
-
 ## Contributing
 
-Contributions are welcome! Feel free to open an issue or submit a pull request if you have ideas for new animations or features.
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
----
-
-<div align="center">
-    Made with ❤️ for the <b>Dank Material Shell</b> community.
-</div>
+Before reporting a new issue, take a look at the [FAQ](https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar/wiki), the [changelog](https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar/releases) and the already opened [issues](https://github.com/JDKamalakar/DMS-ScreenCapture_Toolbar/issues).
 
 ### Credits
 
