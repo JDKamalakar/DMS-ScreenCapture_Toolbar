@@ -21,7 +21,8 @@
     ],
     "dependencies": [
         "dms",
-        "gpu screen recorder"
+        "gpu screen recorder",
+        "slurp (for interactive region recording on Wayland)"
     ],
     "screenshot": "https://raw.githubusercontent.com/JDKamalakar/DMS-ScreenCapture_Toolbar/refs/heads/main/assets/Screenshot_UI.png",
     "permissions": [
