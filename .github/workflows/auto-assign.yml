@@ -2,22 +2,25 @@ name: Auto Assign Issues & PRs
 on:
   issues:
     types: [opened]
-  pull_request_target:
+  pull_request:
     types: [opened]
 
 jobs:
   assign:
+    # Fork PR runs get a read-only GITHUB_TOKEN; addAssignees fails with HttpError /
+    # "Resource not accessible by integration". Assign only when the PR branch lives
+    # in this repo; external forks skip this job cleanly (checks stay green).
+    if: >-
+      github.event_name == 'issues' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # Fork PRs: default pull_request workflows only get a read-only token for the base repo, so addAssignees
-    # fails with "Resource not accessible by integration". pull_request_target runs with repo write permission.
-    # This job stays safe: inline script only, no checkout/run of fork code.
     permissions:
       contents: read
       issues: write
       pull-requests: write
 
     env:
-      # Actions Node 20 deprecation; opt into newer runner runtime for github-script (see GH changelog).
+      # Actions Node 20 deprecation; github-script on newer runner (see GH changelog).
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
