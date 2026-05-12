@@ -19,9 +19,26 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
 
 *Requires Dank Material Shell (DMS) 1.0 or higher.*
 
+## Requirements
+
+To use **Interactive Mode** in screen recorder mode, you must have `slurp` installed on your system.
+
+<div align="left">
+
+```bash
+# Debian/Ubuntu
+sudo apt install slurp
+
+# Fedora
+sudo dnf install slurp
+```
+
+</div>
+
 ## Features
 
 <div align="left">
+
 
 * **Premium Glassmorphism**: Translucent, theme-aware "Floating Pill" design that respects system light and dark modes with 0.98 opacity surfaces.
 * **Repositionable UI**: "Click-to-Move" logic with pixel-perfect absolute coordinate tracking, allowing you to place the recording pill anywhere on your workspace.
