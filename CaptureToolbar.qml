@@ -61,6 +61,26 @@ PluginComponent {
             root.close();
             return "closed";
         }
+
+        /** Reset recording UI if interactive video setup fails (e.g. slurp cancelled). Called from bash. */
+        function cancelRecording(): string {
+            root.isRecording = false;
+            root.isPaused = false;
+            root.recordingElapsed = 0;
+            return "cancelled";
+        }
+
+        /** Show pill + timer only after region selection / portal begins recording (interactive video). Called from bash. */
+        function recordingStarted(): string {
+            root.isRecording = true;
+            root.isPaused = false;
+            root.recordingElapsed = 0;
+            if (root.showNotify) {
+                let dirMsg = root.customPath !== "" ? root.customPath : "~/Videos";
+                Quickshell.execDetached(["notify-send", "Recording Started", "Saving to " + dirMsg]);
+            }
+            return "started";
+        }
     }
 
 
@@ -143,7 +163,7 @@ PluginComponent {
         let filename = "recording-" + timestamp + "." + root.videoFormat;
         let dir = root.customPath !== "" ? root.customPath.replace(/^~/, "$HOME") : "$HOME/Videos";
         let path = dir + "/" + filename;
-        
+
         let prepends = [];
         prepends.push("export NIRI_SOCKET=$(ls /run/user/$(id -u)/niri*.sock 2>/dev/null | head -n 1)");
         if (root.recordAudio) {
@@ -151,37 +171,53 @@ PluginComponent {
         }
         prepends.push("MONITOR=\"\"; if command -v niri >/dev/null 2>&1; then MONITOR=$(niri msg -j outputs 2>/dev/null | jq -r 'keys[0]'); elif command -v hyprctl >/dev/null 2>&1; then MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name'); fi; if [ -z \"$MONITOR\" ] || [ \"$MONITOR\" = \"null\" ]; then MONITOR=\"portal\"; fi");
 
-        let gsrCmd = "gpu-screen-recorder";
+        let gsrSuffix = " -c " + root.videoFormat;
+        gsrSuffix += " -f " + root.videoFPS;
+        if (root.recordAudio)
+            gsrSuffix += " -a \"$AUDIO\"";
+        gsrSuffix += root.showPointer ? " -cursor yes" : " -cursor no";
+        gsrSuffix += " -o \"" + path + "\"";
+        if (root.videoCodec !== "auto")
+            gsrSuffix += " -k " + root.videoCodec;
+
+        let prelude = prepends.join("; ");
+        let scriptBody;
         if (root.captureMode === "interactive") {
-            gsrCmd += " -w portal";
+            // Portal alone is unreliable on niri / some Wayland compositors; use slurp + -w region when available.
+            scriptBody =
+                "cancel_rec() { command -v dms >/dev/null 2>&1 && ( dms ipc call screenCaptureToolbar cancelRecording 2>/dev/null || dms ipc screenCaptureToolbar cancelRecording 2>/dev/null ); }; " +
+                "start_rec() { command -v dms >/dev/null 2>&1 && ( dms ipc call screenCaptureToolbar recordingStarted 2>/dev/null || dms ipc screenCaptureToolbar recordingStarted 2>/dev/null ); }; " +
+                "sleep 0.2; mkdir -p \"" + dir + "\"; " +
+                "if command -v slurp >/dev/null 2>&1; then " +
+                "REGION=$(slurp -f '%wx%h+%x+%y') || { cancel_rec; exit 1; }; " +
+                "[ -z \"$REGION\" ] && { cancel_rec; exit 1; }; " +
+                "start_rec; gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + "; " +
+                "else " +
+                "start_rec; gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "fi";
         } else {
-            gsrCmd += " -w \"$MONITOR\"";
+            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
         }
-        gsrCmd += " -c " + root.videoFormat;
-        gsrCmd += " -f " + root.videoFPS;
-        if (root.recordAudio) gsrCmd += " -a \"$AUDIO\"";
-        gsrCmd += root.showPointer ? " -cursor yes" : " -cursor no";
-        gsrCmd += " -o \"" + path + "\"";
-        if (root.videoCodec !== "auto") gsrCmd += " -k " + root.videoCodec;
-        
-        let finalCmd = prepends.join("; ");
-        if (finalCmd !== "") finalCmd += "; ";
-        finalCmd += gsrCmd;
-        
-        root.isRecording = true;
-        root.isPaused = false;
-        root.recordingElapsed = 0;
+
+        let finalCmd = prelude !== "" ? prelude + "; " + scriptBody : scriptBody;
+
+        let deferRecordingUi = root.captureMode === "interactive";
+        if (!deferRecordingUi) {
+            root.isRecording = true;
+            root.isPaused = false;
+            root.recordingElapsed = 0;
+        }
         root.close();
-        
-        Quickshell.execDetached(["bash", "-c", "sleep 0.2; mkdir -p \"" + dir + "\"; " + finalCmd]);
-        
-        if (root.showNotify) {
+
+        Quickshell.execDetached(["bash", "-c", finalCmd]);
+
+        if (root.showNotify && !deferRecordingUi) {
             Quickshell.execDetached(["notify-send", "Recording Started", "Saving to " + dir]);
         }
     }
 
     function stopRecording() {
-        Quickshell.execDetached(["pkill", "-SIGINT", "gpu-screen-recorder"]);
+        Quickshell.execDetached(["pkill", "-SIGINT", "-f", "^gpu-screen-recorder"]);
         root.isRecording = false;
         root.isPaused = false;
         root.recordingElapsed = 0;
@@ -192,12 +228,12 @@ PluginComponent {
     }
 
     function pauseRecording() {
-        Quickshell.execDetached(["bash", "-c", "killall -SIGUSR2 gpu-screen-recorder"]);
+        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "^gpu-screen-recorder"]);
         root.isPaused = true;
     }
 
     function resumeRecording() {
-        Quickshell.execDetached(["bash", "-c", "killall -SIGUSR2 gpu-screen-recorder"]);
+        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "^gpu-screen-recorder"]);
         root.isPaused = false;
     }
 
