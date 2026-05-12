@@ -2,15 +2,24 @@ name: Auto Assign Issues & PRs
 on:
   issues:
     types: [opened]
-  pull_request:
+  pull_request_target:
     types: [opened]
 
 jobs:
   assign:
     runs-on: ubuntu-latest
+    # Fork PRs: default pull_request workflows only get a read-only token for the base repo, so addAssignees
+    # fails with "Resource not accessible by integration". pull_request_target runs with repo write permission.
+    # This job stays safe: inline script only, no checkout/run of fork code.
     permissions:
+      contents: read
       issues: write
       pull-requests: write
+
+    env:
+      # Actions Node 20 deprecation; opt into newer runner runtime for github-script (see GH changelog).
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: Assign to me
         uses: actions/github-script@v7
