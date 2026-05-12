@@ -28,7 +28,8 @@ To use **Interactive Mode** in screen recorder mode, you must have `slurp` insta
 ```bash
 # Debian/Ubuntu
 sudo apt install slurp
-
+```
+```bash
 # Fedora
 sudo dnf install slurp
 ```
