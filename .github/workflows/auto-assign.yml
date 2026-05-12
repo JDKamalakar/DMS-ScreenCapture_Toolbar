@@ -19,13 +19,10 @@ jobs:
       issues: write
       pull-requests: write
 
-    env:
-      # Actions Node 20 deprecation; github-script on newer runner (see GH changelog).
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
       - name: Assign to me
-        uses: actions/github-script@v7
+        # v9 runs on a current runner Node; avoids deprecated Node 20 runtime for v7.
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.addAssignees({
