@@ -21,19 +21,43 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
 
 ## Requirements
 
-To use **Interactive Mode** in screen recorder mode, you must have `slurp` installed on your system.
+To ensure all features work correctly, the following dependencies are recommended:
 
+<details>
+<summary><b>View System Dependencies</b></summary>
 <div align="left">
+
+*   **Dank Material Shell (DMS)** 1.0 or higher.
+*   **slurp**: Required for **Interactive Mode** region selection.
+*   **gpu-screen-recorder**: Required for high-performance video recording.
+*   **jq**: Required for automatic monitor detection in video mode (parses compositor JSON output).
 
 ```bash
 # Debian/Ubuntu
-sudo apt install slurp
+sudo apt install slurp gpu-screen-recorder jq
 
 # Fedora
-sudo dnf install slurp
+sudo dnf install slurp gpu-screen-recorder jq
 ```
 
 </div>
+</details>
+
+## Keyboard Shortcuts
+
+The toolbar supports the following keyboard interactions when open:
+
+*   **`Space`**: Trigger capture or start/stop recording (configurable behavior).
+*   **`Ctrl + Space`**: Secondary capture mode (typically "Edit Mode", can be swapped or disabled in settings).
+*   **`Escape`**: Dismiss the toolbar.
+
+### Shortcut Customization
+You can customize the power-user workflow in the settings:
+*   **Swap Shortcuts**: Exchange the functionality of `Space` and `Ctrl + Space`.
+*   **Disable Editor Shortcut**: Completely remove the `Ctrl + Space` interaction and UI hint.
+
+### Capture Delay
+For non-interactive screenshot modes (Focused/All Screens), a **Timer** icon appears in the toolbar. Clicking it opens a quick-selection popup where you can choose between 0s, 3s, 5s, and 10s delays. The icon dynamically updates to show the selected time. The toolbar will automatically dismiss itself during the countdown to ensure a clean capture.
 
 ## Features
 
