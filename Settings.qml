@@ -14,7 +14,7 @@ PluginSettings {
 
     Process {
         id: defaultPathDetector
-        command: ["bash", "-c", "dir=$(xdg-user-dir PICTURES 2>/dev/null); if [ -n \"$dir\" ]; then echo \"${dir/#$HOME/~}\"; else echo \"~/Pictures\"; fi"]
+        command: ["bash", "-c", "dir=$(xdg-user-dir PICTURES 2>/dev/null); if [ -n \"$dir\" ]; then echo \"${dir/#$HOME/~}/Screenshots\"; else echo \"~/Pictures/Screenshots\"; fi"]
         running: true
         stdout: SplitParser {
             onRead: function(data) {
@@ -64,6 +64,19 @@ PluginSettings {
                         {label: "All Screens", value: "all"}
                     ]
                     defaultValue: "interactive"
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DankIcon { name: "monitor_weight"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                ToggleSetting {
+                    width: parent.width - 22 - Theme.spacingM
+                    settingKey: "multiMonitorScreenshot"
+                    label: "Multi-Monitor Screenshots"
+                    description: "Use slurp and grim for interactive screenshots across displays"
+                    defaultValue: false
                 }
             }
         }
@@ -154,13 +167,13 @@ PluginSettings {
                     width: parent.width - 22 - Theme.spacingM
                     spacing: Theme.spacingXS
                     StyledText {
-                        text: "Custom Path"
+                        text: "Screenshot Custom Path"
                         font.pixelSize: Theme.fontSizeMedium
                         font.weight: Font.Medium
                         color: Theme.surfaceText
                     }
                     StyledText {
-                        text: "Absolute path to save screenshots. Leave empty for default."
+                        text: "Absolute path to save screenshots. Leave empty for ~/Pictures/Screenshots."
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceVariantText
                         width: parent.width
@@ -190,7 +203,7 @@ PluginSettings {
                     width: parent.width - 22 - Theme.spacingM
                     spacing: Theme.spacingXS
                     StyledText {
-                        text: "Custom Filename"
+                        text: "Screenshot Filename"
                         font.pixelSize: Theme.fontSizeMedium
                         font.weight: Font.Medium
                         color: Theme.surfaceText
@@ -292,13 +305,98 @@ PluginSettings {
             Row {
                 width: parent.width
                 spacing: Theme.spacingM
-                DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                DankIcon { name: "graphic_eq"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                 ToggleSetting {
                     width: parent.width - 22 - Theme.spacingM
                     settingKey: "recordAudio"
-                    label: "Record Audio"
-                    description: "Include system audio in the recording"
+                    label: "Record System Audio"
+                    description: "Include desktop/output audio in the recording"
                     defaultValue: true
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                ToggleSetting {
+                    width: parent.width - 22 - Theme.spacingM
+                    settingKey: "recordMic"
+                    label: "Record Microphone"
+                    description: "Include the default microphone input in the recording"
+                    defaultValue: false
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                Column {
+                    width: parent.width - 22 - Theme.spacingM
+                    spacing: Theme.spacingXS
+                    StyledText {
+                        text: "Video Custom Path"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Medium
+                        color: Theme.surfaceText
+                    }
+                    StyledText {
+                        text: "Absolute path to save recordings. Leave empty for ~/Videos."
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceVariantText
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                StringSetting {
+                    width: parent.width
+                    settingKey: "videoCustomPath"
+                    label: ""
+                    description: ""
+                    placeholder: "~/Videos"
+                    defaultValue: ""
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                Column {
+                    width: parent.width - 22 - Theme.spacingM
+                    spacing: Theme.spacingXS
+                    StyledText {
+                        text: "Video Filename"
+                        font.pixelSize: Theme.fontSizeMedium
+                        font.weight: Font.Medium
+                        color: Theme.surfaceText
+                    }
+                    StyledText {
+                        text: "Override the generated recording filename. Extension is added if omitted."
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceVariantText
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spacingM
+                StringSetting {
+                    width: parent.width
+                    settingKey: "videoFilename"
+                    label: ""
+                    description: ""
+                    placeholder: "recording_2026-05-15_14-30-00.mkv"
+                    defaultValue: ""
                 }
             }
         }
@@ -381,7 +479,7 @@ PluginSettings {
                         color: Theme.surfaceText
                     }
                     StyledText {
-                        text: "Command after ' | ' (e.g. swappy -f -)"
+                        text: "Command after ' | '. Leave empty to use satty."
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceVariantText
                         width: parent.width
@@ -398,7 +496,7 @@ PluginSettings {
                     settingKey: "pipeCommand"
                     label: ""
                     description: ""
-                    placeholder: "swappy -f -"
+                    placeholder: "{ mkdir -p \"$HOME/Pictures/Screenshots\"; satty --filename - --output-filename \"$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png\"; }"
                     defaultValue: ""
                 }
             }
