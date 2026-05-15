@@ -75,6 +75,18 @@ PluginSettings {
                         defaultValue: "interactive"
                     }
                 }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "monitor_weight"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "multiMonitorScreenshot"
+                        label: "Multi-Monitor Screenshots"
+                        description: "Use slurp and grim for interactive screenshots across displays"
+                        defaultValue: false
+                    }
+                }
             }
         }
 
@@ -221,6 +233,59 @@ PluginSettings {
                         label: "Record Audio"
                         description: "Include system audio in the recording"
                         defaultValue: true
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "recordMic"
+                        label: "Record Microphone"
+                        description: "Include the default microphone input in the recording"
+                        defaultValue: false
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "speed"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    SelectionSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "videoFPS"
+                        label: "Video FPS"
+                        description: "Frames per second for recording"
+                        options: [
+                            {label: "60 FPS", value: "60"},
+                            {label: "30 FPS", value: "30"},
+                            {label: "24 FPS", value: "24"}
+                        ]
+                        defaultValue: "60"
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    Column {
+                        width: parent.width - 22 - Theme.spacingM
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Video Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                        StyledText { text: "Absolute path to save recordings. Leave empty for ~/Videos."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        StringSetting { width: parent.width; settingKey: "videoCustomPath"; label: ""; description: ""; placeholder: "~/Videos"; defaultValue: "" }
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    Column {
+                        width: parent.width - 22 - Theme.spacingM
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Video Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                        StyledText { text: "Override the generated recording filename. Extension is added if omitted."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        StringSetting { width: parent.width; settingKey: "videoFilename"; label: ""; description: ""; placeholder: "recording_2026-05-15_14-30-00.mkv"; defaultValue: "" }
                     }
                 }
             }
@@ -389,6 +454,67 @@ PluginSettings {
                         label: "Show Recording Pill"
                         description: "Show the status pill at the top during recording"
                         defaultValue: true
+                    }
+                }
+            }
+        }
+
+        // --- Styles ---
+        Rectangle {
+            width: parent.width
+            height: interfaceStylesGroup.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+
+            function loadValue() {
+                if (!interfaceStylesGroup) return;
+                for (var i = 0; i < interfaceStylesGroup.children.length; i++) {
+                    var row = interfaceStylesGroup.children[i];
+                    if (row && row.children) {
+                        for (var j = 0; j < row.children.length; j++) {
+                            if (row.children[j].loadValue) row.children[j].loadValue();
+                        }
+                    }
+                }
+            }
+
+            Column {
+                id: interfaceStylesGroup
+                anchors.fill: parent
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "opacity"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    Column {
+                        width: parent.width - 22 - Theme.spacingM
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Toolbar Transparency"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                        StyledText { text: "Adjust the background opacity of the toolbar and recording pill"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    Column {
+                        width: parent.width
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Toolbar Background Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
+                        StringSetting { width: parent.width; settingKey: "toolbarOpacity"; label: ""; description: ""; placeholder: "0.85"; defaultValue: "0.85" }
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    Column {
+                        width: parent.width
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Recording Pill Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
+                        StringSetting { width: parent.width; settingKey: "pillOpacity"; label: ""; description: ""; placeholder: "0.92"; defaultValue: "0.92" }
                     }
                 }
             }

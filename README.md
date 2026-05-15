@@ -36,7 +36,7 @@ To ensure all features work correctly, the following dependencies are recommende
 ```bash
 # Debian/Ubuntu
 sudo apt install slurp gpu-screen-recorder jq
-
+```
 ```bash
 # Fedora
 sudo dnf install slurp gpu-screen-recorder jq
@@ -47,19 +47,37 @@ sudo dnf install slurp gpu-screen-recorder jq
 
 ## Keyboard Shortcuts
 
+<div align="left">
+
 The toolbar supports the following keyboard interactions when open:
 
 *   **`Space`**: Trigger capture or start/stop recording (configurable behavior).
 *   **`Ctrl + Space`**: Secondary capture mode (typically "Edit Mode", can be swapped or disabled in settings).
 *   **`Escape`**: Dismiss the toolbar.
 
+If the editor pipe command is empty, the toolbar uses:
+
+```bash
+{ mkdir -p "$HOME/Pictures/Screenshots"; satty --filename - --output-filename "$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png"; }
+```
+
+If `satty` is not installed, a notification is shown so you can install it or set a custom editor pipe command such as `swappy -f -`.
+
+</div>
+
+<div align="center">
+
 ### Shortcut Customization
+
+</div>
+
+<div align="left">
+
 You can customize the power-user workflow in the settings:
 *   **Swap Shortcuts**: Exchange the functionality of `Space` and `Ctrl + Space`.
 *   **Disable Editor Shortcut**: Completely remove the `Ctrl + Space` interaction and UI hint.
 
-### Capture Delay
-For non-interactive screenshot modes (Focused/All Screens), a **Timer** icon appears in the toolbar. Clicking it opens a quick-selection popup where you can choose between 0s, 3s, 5s, and 10s delays. The icon dynamically updates to show the selected time. The toolbar will automatically dismiss itself during the countdown to ensure a clean capture.
+</div>
 
 ## Features
 
@@ -74,25 +92,8 @@ For non-interactive screenshot modes (Focused/All Screens), a **Timer** icon app
 * **Flexible Recording Audio**: Record system output audio and microphone input independently.
 * **Separate Output Settings**: Screenshots and recordings can use independent custom directories and filenames.
 * **Versatile Capture**: Native support for interactive region selection, active monitor focus, full-workspace grabbing, and optional `slurp` + `grim` multi-monitor screenshots.
+* **Configurable Capture Delay**: For non-interactive screenshot modes, a **Timer** icon allows choosing 3s, 5s, or 10s delays for capture.
 * **Power Workflow**: Lightning-fast controls with `Spacebar` to trigger captures, `Ctrl+Space` to send a screenshot to the editor, and `Escape` for instant dismissal.
-
-</div>
-
-## Shortcuts
-
-<div align="left">
-
-* `Space`: run the normal capture or recording action for the selected mode.
-* `Ctrl+Space`: take a screenshot and pipe it to the configured editor command.
-* `Escape`: close the toolbar.
-
-If the editor pipe command is empty, the toolbar uses:
-
-```bash
-{ mkdir -p "$HOME/Pictures/Screenshots"; satty --filename - --output-filename "$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png"; }
-```
-
-If `satty` is not installed, a notification is shown so you can install it or set a custom editor pipe command such as `swappy -f -`.
 
 </div>
 

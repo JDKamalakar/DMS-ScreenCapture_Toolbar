@@ -51,6 +51,18 @@ PluginComponent {
     property int delaySeconds: (pluginData && pluginData.delaySeconds != null) ? pluginData.delaySeconds : 0
     property real toolbarOpacity: (pluginData && pluginData.toolbarOpacity != null) ? pluginData.toolbarOpacity : 0.85
     property real pillOpacity: (pluginData && pluginData.pillOpacity != null) ? pluginData.pillOpacity : 0.92
+    property string recPillScreenName: Quickshell.screens.length > 0 ? Quickshell.screens[0].name : ""
+    property int recPillX: -1
+    property int recPillY: 12
+    property bool recPillExpanded: false
+    property bool recPillDragging: false
+    property real recPillDragStartMouseX: 0
+    property real recPillDragStartMouseY: 0
+    property real recPillDragStartPillX: 0
+    property real recPillDragStartPillY: 0
+    property bool recPillDragStarted: false
+    readonly property int recPillWindowWidth: 460
+    readonly property int recPillWindowHeight: 60
 
     // -- IPC ------------------------------------------------------------------
     IpcHandler {
@@ -143,6 +155,161 @@ PluginComponent {
         }
     }
 
+    function shellQuote(value) {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
+    function screenshotDir() {
+        return root.customPath !== "" ? root.customPath : "~/Pictures/Screenshots";
+    }
+
+    function videoDir() {
+        return root.videoCustomPath !== "" ? root.videoCustomPath : "~/Videos";
+    }
+
+    function expandHome(path) {
+        return String(path).replace(/^~/, "$HOME");
+    }
+
+    function effectivePipeCommand() {
+        return root.pipeCommand !== "" ? root.pipeCommand : root.defaultPipeCommand;
+    }
+
+    function editorExecutableName(command) {
+        if (root.pipeCommand === "" && command === root.defaultPipeCommand) return "satty";
+        let trimmed = String(command).trim();
+        if (trimmed === "") return "";
+        return trimmed.split(/\s+/)[0];
+    }
+
+    function editorAvailabilityGuard(command) {
+        let executable = root.editorExecutableName(command);
+        if (executable === "") return "";
+        return "if ! command -v " + root.shellQuote(executable) + " >/dev/null 2>&1; then " +
+               "notify-send " + root.shellQuote("Screenshot Editor Missing") + " " +
+               root.shellQuote("Install " + executable + " or set Editor Pipe Command") + " 2>/dev/null || true; exit 1; fi; ";
+    }
+
+    function parseDateTemplate(template) {
+        let now = new Date();
+        function pad(value) { return value < 10 ? "0" + value : "" + value; }
+        return String(template)
+            .replace(/%Y/g, now.getFullYear())
+            .replace(/%m/g, pad(now.getMonth() + 1))
+            .replace(/%d/g, pad(now.getDate()))
+            .replace(/%H/g, pad(now.getHours()))
+            .replace(/%M/g, pad(now.getMinutes()))
+            .replace(/%S/g, pad(now.getSeconds()));
+    }
+
+    function filenameTimestamp() {
+        return root.parseDateTemplate("%Y-%m-%d_%H-%M-%S");
+    }
+
+    function clamp(value, minValue, maxValue) {
+        return Math.max(minValue, Math.min(value, maxValue));
+    }
+
+    function screenByName(name) {
+        for (let i = 0; i < Quickshell.screens.length; i++) {
+            if (Quickshell.screens[i].name === name) return Quickshell.screens[i];
+        }
+        return Quickshell.screens.length > 0 ? Quickshell.screens[0] : null;
+    }
+
+    function recPillLocalX(screen) {
+        if (!screen) return 12;
+        let defaultX = Math.max(4, screen.width - root.recPillWindowWidth - 12);
+        let x = root.recPillX >= 0 ? root.recPillX : defaultX;
+        return clamp(x, 4, Math.max(4, screen.width - root.recPillWindowWidth - 4));
+    }
+
+    function recPillLocalY(screen) {
+        if (!screen) return 12;
+        return clamp(root.recPillY, 4, Math.max(4, screen.height - root.recPillWindowHeight - 4));
+    }
+
+    function screenForGlobalPoint(globalX, globalY) {
+        for (let i = 0; i < Quickshell.screens.length; i++) {
+            let candidate = Quickshell.screens[i];
+            if (globalX >= candidate.x && globalX < candidate.x + candidate.width &&
+                globalY >= candidate.y && globalY < candidate.y + candidate.height) {
+                return candidate;
+            }
+        }
+        return screenByName(root.recPillScreenName);
+    }
+
+    function beginRecPillDrag() {
+        root.recPillDragging = true;
+        root.recPillDragStarted = false;
+    }
+
+    function endRecPillDrag() {
+        root.recPillDragging = false;
+        root.recPillDragStarted = false;
+
+        let screen = screenByName(root.recPillScreenName);
+        if (screen) {
+            let snapThreshold = 40;
+            let leftLimit = 4;
+            let rightLimit = Math.max(4, screen.width - root.recPillWindowWidth - 4);
+
+            let isNearLeft = root.recPillX < (leftLimit + snapThreshold);
+            let isNearRight = root.recPillX > (rightLimit - snapThreshold);
+
+            if (isNearLeft || isNearRight) {
+                root.recPillExpanded = false;
+                if (isNearLeft) root.recPillX = leftLimit;
+                if (isNearRight) root.recPillX = rightLimit;
+            }
+
+            root._save("recPillScreenName", root.recPillScreenName);
+            root._save("recPillX", root.recPillX);
+            root._save("recPillY", root.recPillY);
+        }
+    }
+
+    function ensureRecPillScreen() {
+        if (!screenByName(root.recPillScreenName) && Quickshell.screens.length > 0) {
+            root.recPillScreenName = Quickshell.screens[0].name;
+            root.recPillX = -1;
+            root.recPillY = 12;
+        }
+    }
+
+    function updateRecPillDrag(screen, localMouseX, localMouseY) {
+        if (!screen) return;
+
+        let globalMouseX = screen.x + localMouseX;
+        let globalMouseY = screen.y + localMouseY;
+
+        if (!root.recPillDragStarted) {
+            let currentScreen = screenByName(root.recPillScreenName) || screen;
+            root.recPillDragStartMouseX = globalMouseX;
+            root.recPillDragStartMouseY = globalMouseY;
+            root.recPillDragStartPillX = currentScreen.x + root.recPillLocalX(currentScreen);
+            root.recPillDragStartPillY = currentScreen.y + root.recPillLocalY(currentScreen);
+            root.recPillDragStarted = true;
+            return;
+        }
+
+        let desiredGlobalX = root.recPillDragStartPillX + (globalMouseX - root.recPillDragStartMouseX);
+        let desiredGlobalY = root.recPillDragStartPillY + (globalMouseY - root.recPillDragStartMouseY);
+        let targetScreen = screenForGlobalPoint(globalMouseX, globalMouseY) || screen;
+
+        root.recPillScreenName = targetScreen.name;
+        root.recPillX = clamp(Math.round(desiredGlobalX - targetScreen.x), 4, Math.max(4, targetScreen.width - root.recPillWindowWidth - 4));
+        root.recPillY = clamp(Math.round(desiredGlobalY - targetScreen.y), 4, Math.max(4, targetScreen.height - root.recPillWindowHeight - 4));
+    }
+
+    Connections {
+        target: Quickshell
+        function onScreensChanged() {
+            root.ensureRecPillScreen();
+        }
+    }
+
     onPluginDataChanged: {
         if (!pluginData) return;
         root.captureMode = pluginData.captureMode || "interactive";
@@ -164,6 +331,10 @@ PluginComponent {
         root.delaySeconds = pluginData.delaySeconds !== undefined ? pluginData.delaySeconds : 0;
         root.toolbarOpacity = pluginData.toolbarOpacity !== undefined ? pluginData.toolbarOpacity : 0.85;
         root.pillOpacity = pluginData.pillOpacity !== undefined ? pluginData.pillOpacity : 0.92;
+
+        if (pluginData.recPillScreenName !== undefined) root.recPillScreenName = pluginData.recPillScreenName;
+        if (pluginData.recPillX !== undefined) root.recPillX = pluginData.recPillX;
+        if (pluginData.recPillY !== undefined) root.recPillY = pluginData.recPillY;
     }
 
     function performCapture(forceEdit = false) {
@@ -206,7 +377,10 @@ PluginComponent {
         }
     }
 
-    function takeScreenshot(forceEdit = false) {
+    function buildDmsScreenshotCommand(forceEditor) {
+        let useStdout = forceEditor || root.stdout;
+        let editorCommand = root.effectivePipeCommand();
+        let dir = root.screenshotDir();
         let dmsStr = "dms screenshot";
         if (root.captureMode === "full") dmsStr += " full";
         else if (root.captureMode === "all") dmsStr += " all";
@@ -216,12 +390,7 @@ PluginComponent {
         if (!root.saveToDisk) dmsStr += " --no-file";
         if (!root.copyToClipboard) dmsStr += " --no-clipboard";
         if (!root.showNotify) dmsStr += " --no-notify";
-        
-        // forceEdit is true if the user specifically requested 'Edit' (e.g. via Ctrl+Space or Swap)
-        // stdout is the master switch - if it's off, no editor is used.
-        let useEditor = root.stdout && forceEdit;
-        if (useEditor) dmsStr += " --stdout";
-        
+        if (useStdout) dmsStr += " --stdout";
         if (root.filename !== "") dmsStr += " --filename \"" + root.filename + "\"";
 
         dmsStr += " -f " + root.format;
@@ -283,10 +452,6 @@ PluginComponent {
             script += captureToStdout + " >/dev/null; ";
         }
         
-        if (useEditor && root.pipeCommand !== "") {
-            dmsStr += " | " + root.pipeCommand;
-        }
-
         return script;
     }
 
