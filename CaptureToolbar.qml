@@ -139,6 +139,7 @@ PluginComponent {
                 else if (key === "saveToDisk") root.saveToDisk = value;
                 else if (key === "stdout") root.stdout = value;
                 else if (key === "recordAudio") root.recordAudio = value;
+                else if (key === "recordMic") root.recordMic = value;
                 else if (key === "showPointer") root.showPointer = value;
                 else if (key === "showNotify") root.showNotify = value;
                 else if (key === "showRecPill") root.showRecPill = value;
@@ -322,6 +323,7 @@ PluginComponent {
         root.stdout = pluginData.stdout !== undefined ? pluginData.stdout : false;
         root.pipeCommand = pluginData.pipeCommand || "";
         root.recordAudio = pluginData.recordAudio !== undefined ? pluginData.recordAudio : true;
+        root.recordMic = pluginData.recordMic !== undefined ? pluginData.recordMic : false;
         root.videoFormat = pluginData.videoFormat || "mkv";
         root.videoFPS = pluginData.videoFPS || 60;
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
@@ -785,7 +787,7 @@ PluginComponent {
                             SettingToggle {
                                 label: "Record Microphone"; iconName: "mic"; active: root.recordMic
                                 visible: root.isVideoMode
-                                onToggled: { root.recordMic = active; root._save("recordMic", root.recordMic) }
+                                onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
                             }
                             SettingToggle {
                                 label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
