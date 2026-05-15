@@ -22,36 +22,44 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
 
 ## Requirements
 
-The toolbar uses DMS for its standard capture path and optional Wayland utilities for the enhanced workflows:
+To ensure all features work correctly, the following dependencies are recommended:
 
-* `slurp` — interactive region selection for recording and optional multi-monitor screenshots
-* `grim` — optional multi-monitor screenshot capture
-* `wl-clipboard` — clipboard support for the optional multi-monitor screenshot path
-* `satty` — default screenshot editor used by `Ctrl+Space` when no custom editor pipe is configured
-
+<details>
+<summary><b>View System Dependencies</b></summary>
 <div align="left">
+
+*   **Dank Material Shell (DMS)** 1.0 or higher.
+*   **slurp**: Required for **Interactive Mode** region selection.
+*   **gpu-screen-recorder**: Required for high-performance video recording.
+*   **jq**: Required for automatic monitor detection in video mode (parses compositor JSON output).
 
 ```bash
 # Debian/Ubuntu
-sudo apt install slurp grim wl-clipboard satty
-```
+sudo apt install slurp gpu-screen-recorder jq
 
 ```bash
 # Fedora
-sudo dnf install slurp grim wl-clipboard satty
-```
-
-```bash
-# Arch Linux
-sudo pacman -S slurp grim wl-clipboard satty
-```
-
-```bash
-# Other distributions
-# Install the equivalent packages: slurp grim wl-clipboard satty
+sudo dnf install slurp gpu-screen-recorder jq
 ```
 
 </div>
+</details>
+
+## Keyboard Shortcuts
+
+The toolbar supports the following keyboard interactions when open:
+
+*   **`Space`**: Trigger capture or start/stop recording (configurable behavior).
+*   **`Ctrl + Space`**: Secondary capture mode (typically "Edit Mode", can be swapped or disabled in settings).
+*   **`Escape`**: Dismiss the toolbar.
+
+### Shortcut Customization
+You can customize the power-user workflow in the settings:
+*   **Swap Shortcuts**: Exchange the functionality of `Space` and `Ctrl + Space`.
+*   **Disable Editor Shortcut**: Completely remove the `Ctrl + Space` interaction and UI hint.
+
+### Capture Delay
+For non-interactive screenshot modes (Focused/All Screens), a **Timer** icon appears in the toolbar. Clicking it opens a quick-selection popup where you can choose between 0s, 3s, 5s, and 10s delays. The icon dynamically updates to show the selected time. The toolbar will automatically dismiss itself during the countdown to ensure a clean capture.
 
 ## Features
 
