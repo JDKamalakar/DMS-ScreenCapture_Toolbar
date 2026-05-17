@@ -7,6 +7,7 @@
 # [DMS-ScreenCapture_Toolbar](#)
 
 ### Premium Screen Capture Management
+
 A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seamlessly switch between photo and video modes with tactile animations and dynamic, mode-aware controls.
 
 [![DMS Compatible](https://img.shields.io/badge/DMS-Compatible-purple.svg?labelColor=27303D)](https://github.com/Dank-Material-Shell)
@@ -21,18 +22,61 @@ A high-end, glassmorphic floating pill toolbar for the Dank Material Shell. Seam
 
 ## Requirements
 
-To use **Interactive Mode** in screen recorder mode, you must have `slurp` installed on your system.
+To ensure all features work correctly, the following dependencies are recommended:
 
+<details>
+<summary><b>View System Dependencies</b></summary>
 <div align="left">
+
+*   **Dank Material Shell (DMS)** 1.0 or higher.
+*   **slurp**: Required for **Interactive Mode** region selection.
+*   **gpu-screen-recorder**: Required for high-performance video recording.
+*   **jq**: Required for automatic monitor detection in video mode (parses compositor JSON output).
 
 ```bash
 # Debian/Ubuntu
-sudo apt install slurp
+sudo apt install slurp gpu-screen-recorder jq
 ```
 ```bash
 # Fedora
-sudo dnf install slurp
+sudo dnf install slurp gpu-screen-recorder jq
 ```
+
+</div>
+</details>
+
+## Keyboard Shortcuts
+
+The toolbar supports the following keyboard interactions when open:
+
+<div align="left">
+
+*   **`Space`**: Trigger capture or start/stop recording (configurable behavior).
+*   **`Ctrl + Space`**: Secondary capture mode (typically "Edit Mode", can be swapped or disabled in settings).
+*   **`Escape`**: Dismiss the toolbar.
+
+If the editor pipe command is empty, the toolbar uses:
+
+```bash
+{ mkdir -p "$HOME/Pictures/Screenshots"; satty --filename - --output-filename "$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png"; }
+```
+
+If `satty` is not installed, a notification is shown so you can install it or set a custom editor pipe command such as `swappy -f -`.
+
+</div>
+
+<div align="center">
+
+
+## Requirements
+
+You can customize the power-user workflow in the settings:
+</div>
+
+<div align="left">
+
+*   **Swap Shortcuts**: Exchange the functionality of `Space` and `Ctrl + Space`.
+*   **Disable Editor Shortcut**: Completely remove the `Ctrl + Space` interaction and UI hint.
 
 </div>
 
@@ -40,15 +84,36 @@ sudo dnf install slurp
 
 <div align="left">
 
-
-* **Premium Glassmorphism**: Translucent, theme-aware "Floating Pill" design that respects system light and dark modes with 0.98 opacity surfaces.
-* **Repositionable UI**: "Click-to-Move" logic with pixel-perfect absolute coordinate tracking, allowing you to place the recording pill anywhere on your workspace.
+* **Premium Glassmorphism**: Translucent, theme-aware "Floating Pill" design with configurable toolbar and recording pill opacity.
+* **Multi-Monitor Recording Pill**: "Click-to-Move" logic with screen-aware positioning, allowing you to move the recording pill across connected displays.
 * **Adaptive Theme Support**: Intelligent UI that dynamically flips icon and text colors between black and white based on your theme brightness for guaranteed visibility.
 * **Smart Recording Pill**: A collapsible, high-frequency overlay that displays live recording duration and provides instant access to stop, pause, and screenshot actions.
 * **Tactile Interaction**: Features playful 360° spins, tilt-and-jump micro-animations, and responsive Dank Ripples on every interactive element.
 * **Dynamic Settings**: A context-aware popup bubble that automatically filters capture settings (FPS, Audio, Formats) based on your active mode (Photo vs. Video).
-* **Versatile Capture**: Native support for interactive region selection, active monitor focus, and full-workspace grabbing.
-* **Power Workflow**: Lightning-fast controls with `Spacebar` to trigger captures and `Escape` for instant dismissal.
+* **Flexible Recording Audio**: Record system output audio and microphone input independently.
+* **Separate Output Settings**: Screenshots and recordings can use independent custom directories and filenames.
+* **Versatile Capture**: Native support for interactive region selection, active monitor focus, full-workspace grabbing, and optional `slurp` + `grim` multi-monitor screenshots.
+* **Configurable Capture Delay**: For non-interactive screenshot modes, a **Timer** icon allows choosing 3s, 5s, or 10s delays for capture.
+* **Power Workflow**: Lightning-fast controls with `Spacebar` to trigger captures, `Ctrl+Space` to send a screenshot to the editor, and `Escape` for instant dismissal.
+
+</div>
+
+## DMS Shortcut Setup
+
+<div align="left">
+
+To open the toolbar from a keyboard shortcut, add an entry in **DMS Settings** -> **Keyboard Shortcuts**:
+
+* Type: `Run a program`
+* Action: `dms ipc call screenCaptureToolbar toggle`
+
+</div>
+
+## Multi-Monitor Screenshots
+
+<div align="left">
+
+Interactive screenshot capture can optionally use `slurp` and `grim` for region selection across displays. Enable **Multi-Monitor Screenshots** in settings to use this path. When disabled, screenshots keep using the standard `dms screenshot` behavior.
 
 </div>
 
