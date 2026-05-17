@@ -47,9 +47,9 @@ sudo dnf install slurp gpu-screen-recorder jq
 
 ## Keyboard Shortcuts
 
-<div align="left">
-
 The toolbar supports the following keyboard interactions when open:
+
+<div align="left">
 
 *   **`Space`**: Trigger capture or start/stop recording (configurable behavior).
 *   **`Ctrl + Space`**: Secondary capture mode (typically "Edit Mode", can be swapped or disabled in settings).
@@ -67,13 +67,14 @@ If `satty` is not installed, a notification is shown so you can install it or se
 
 <div align="center">
 
-### Shortcut Customization
 
+## Requirements
+
+You can customize the power-user workflow in the settings:
 </div>
 
 <div align="left">
 
-You can customize the power-user workflow in the settings:
 *   **Swap Shortcuts**: Exchange the functionality of `Space` and `Ctrl + Space`.
 *   **Disable Editor Shortcut**: Completely remove the `Ctrl + Space` interaction and UI hint.
 
