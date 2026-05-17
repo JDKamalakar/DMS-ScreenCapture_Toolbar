@@ -42,6 +42,8 @@ PluginComponent {
     property string videoFilename: (pluginData && pluginData.videoFilename) || ""
     property bool isRecording: false
     property bool isPaused: false
+    property bool isMicCaptured: false
+    property bool isMicMuted: false
     property int recordingElapsed: 0
     property var recordingProcess: null
     property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
@@ -87,6 +89,8 @@ PluginComponent {
         function cancelRecording(): string {
             root.isRecording = false;
             root.isPaused = false;
+            root.isMicCaptured = false;
+            root.isMicMuted = false;
             root.recordingElapsed = 0;
             return "cancelled";
         }
@@ -139,6 +143,7 @@ PluginComponent {
                 else if (key === "saveToDisk") root.saveToDisk = value;
                 else if (key === "stdout") root.stdout = value;
                 else if (key === "recordAudio") root.recordAudio = value;
+                else if (key === "recordMic") root.recordMic = value;
                 else if (key === "showPointer") root.showPointer = value;
                 else if (key === "showNotify") root.showNotify = value;
                 else if (key === "showRecPill") root.showRecPill = value;
@@ -149,6 +154,11 @@ PluginComponent {
                 else if (key === "enableEditorShortcut") root.enableEditorShortcut = value;
                 else if (key === "swapCaptureKeys") root.swapCaptureKeys = value;
                 else if (key === "delaySeconds") root.delaySeconds = value;
+                else if (key === "videoFormat") root.videoFormat = value;
+                else if (key === "videoFPS") root.videoFPS = value;
+                else if (key === "videoCustomPath") root.videoCustomPath = value;
+                else if (key === "videoFilename") root.videoFilename = value;
+                else if (key === "pipeCommand") root.pipeCommand = value;
                 else if (key === "toolbarOpacity") root.toolbarOpacity = value;
                 else if (key === "pillOpacity") root.pillOpacity = value;
             }
@@ -322,8 +332,11 @@ PluginComponent {
         root.stdout = pluginData.stdout !== undefined ? pluginData.stdout : false;
         root.pipeCommand = pluginData.pipeCommand || "";
         root.recordAudio = pluginData.recordAudio !== undefined ? pluginData.recordAudio : true;
+        root.recordMic = pluginData.recordMic !== undefined ? pluginData.recordMic : false;
         root.videoFormat = pluginData.videoFormat || "mkv";
         root.videoFPS = pluginData.videoFPS || 60;
+        root.videoCustomPath = pluginData.videoCustomPath || "";
+        root.videoFilename = pluginData.videoFilename || "";
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
         root.showNotify = pluginData.showNotify !== undefined ? pluginData.showNotify : true;
         root.enableEditorShortcut = pluginData.enableEditorShortcut !== undefined ? pluginData.enableEditorShortcut : true;
@@ -466,6 +479,11 @@ PluginComponent {
     }
 
     function startVideoRecording() {
+        root.isMicCaptured = root.recordMic;
+        root.isMicMuted = false;
+        if (root.recordMic) {
+            Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
+        }
         let parsedFilename = root.videoFilename !== "" ? root.parseDateTemplate(root.videoFilename) : "";
         if (parsedFilename !== "" && parsedFilename.indexOf(".") === -1) parsedFilename += "." + root.videoFormat;
         let filename = parsedFilename !== "" ? parsedFilename : "recording_" + root.filenameTimestamp() + "." + root.videoFormat;
@@ -536,8 +554,11 @@ PluginComponent {
 
     function stopRecording() {
         Quickshell.execDetached(["pkill", "-SIGINT", "-f", "^gpu-screen-recorder"]);
+        Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
         root.isRecording = false;
         root.isPaused = false;
+        root.isMicCaptured = false;
+        root.isMicMuted = false;
         root.recordingElapsed = 0;
 
         if (root.showNotify) {
@@ -785,7 +806,7 @@ PluginComponent {
                             SettingToggle {
                                 label: "Record Microphone"; iconName: "mic"; active: root.recordMic
                                 visible: root.isVideoMode
-                                onToggled: { root.recordMic = active; root._save("recordMic", root.recordMic) }
+                                onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
                             }
                             SettingToggle {
                                 label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
@@ -1281,21 +1302,26 @@ PluginComponent {
 
     // Premium Action Button for the Recording Pill
     component PillActionBtn: Item {
+        id: pillBtnRoot
         property string iconName: ""
         property real size: 40
         property real iconSize: 20
         property bool isDark: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5)
+        property bool isActive: false
         signal clicked()
 
-        width: size; height: size
+        width: visible ? size : 0; height: visible ? size : 0
         scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.08 : 1.0)
         Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
 
         Rectangle {
             anchors.fill: parent
-            radius: 12
-            color: Theme.withAlpha(Theme.primary || "#ffffff", 0.25)
+            radius: isActive ? size / 2 : 12
+            color: isActive ? (Theme.primary || "#38bdf8") : Theme.withAlpha(Theme.primary || "#ffffff", 0.25)
             clip: true
+
+            Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+            Behavior on color { ColorAnimation { duration: 300 } }
 
             // Hover glow
             Rectangle {
@@ -1304,6 +1330,7 @@ PluginComponent {
                 color: isDark ? "black" : "white"
                 opacity: ma.containsMouse ? 0.1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
+                Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
             }
 
             // DankRipple
@@ -1327,10 +1354,13 @@ PluginComponent {
 
         DankIcon {
             name: iconName; size: iconSize;
-            color: (ma.containsMouse || ma.pressed) ? "white" : Theme.primary
+            color: isActive
+                ? (isDark ? "black" : "white")
+                : ((ma.containsMouse || ma.pressed) ? "white" : Theme.primary)
             anchors.centerIn: parent
-            rotation: ma.containsMouse ? 8 : 0
-            Behavior on rotation { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
+            rotation: (ma.containsMouse ? 8 : 0) + (isActive ? 360 : 0)
+            Behavior on rotation { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
+            Behavior on color { ColorAnimation { duration: 250 } }
         }
 
         MouseArea {
@@ -1548,7 +1578,7 @@ PluginComponent {
         Rectangle {
             id: recPillBg
             anchors.right: parent.right
-            width: recPill.recPillExpanded ? 460 : 260
+            width: recPill.recPillExpanded ? (root.isMicCaptured ? 460 : 414) : 260
             height: parent.height
             radius: height / 2
 
@@ -1556,8 +1586,11 @@ PluginComponent {
 
             // Fixed high opacity as requested, removing dependency on settings
             color: Theme.withAlpha(Theme.surface || "#ffffff", 0.98)
-            border.width: recPill.isDragging ? 2 : 1
-            border.color: recPill.isDragging ? Theme.primary : Qt.rgba(0, 0, 0, 0.1)
+            border.width: root.recPillDragging ? 3 : 1
+            border.color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Qt.rgba(0, 0, 0, 0.1)
+            
+            Behavior on border.width { NumberAnimation { duration: 300 } }
+            Behavior on border.color { ColorAnimation { duration: 300 } }
             
             layer.enabled: false // Shadows removed as requested
         }
@@ -1732,6 +1765,18 @@ PluginComponent {
                     onClicked: root.isPaused ? root.resumeRecording() : root.pauseRecording()
                 }
                 PillActionBtn {
+                    iconName: root.isMicMuted ? "mic_off" : "mic"
+                    visible: root.isMicCaptured
+                    isActive: !root.isMicMuted
+                    onClicked: {
+                        root.isMicMuted = !root.isMicMuted;
+                        if (root.isRecording) {
+                            let muteVal = root.isMicMuted ? "1" : "0";
+                            Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", muteVal]);
+                        }
+                    }
+                }
+                PillActionBtn {
                     iconName: "photo_camera"
                     onClicked: {
                         root.takeScreenshot();
@@ -1741,31 +1786,56 @@ PluginComponent {
 
             // Drag Handle (Moved to right)
             Rectangle {
-                width: 36; height: 40; 
-                radius: recPill.isDragging ? 20 : 10
-                color: recPill.isDragging ? (Theme.primary || "#ffffff") : Theme.withAlpha(Theme.primary || "#ffffff", 0.1)
+                id: moveBtnRoot
+                width: 40; height: 40; 
+                radius: root.recPillDragging ? 20 : 12
+                color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Theme.withAlpha(Theme.primary || "#ffffff", 0.25)
                 scale: moveMa.pressed ? 0.92 : (moveMa.containsMouse ? 1.08 : 1.0)
+                clip: true
 
-                Behavior on radius { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
+                Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
                 Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+                Behavior on color { ColorAnimation { duration: 300 } }
+
+                // Hover glow
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: recPill.isDark ? "black" : "white"
+                    opacity: moveMa.containsMouse ? 0.1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+                }
+
+                // DankRipple
+                Rectangle {
+                    id: moveRippleObj
+                    anchors.centerIn: parent
+                    width: parent.width * 1.5; height: width
+                    radius: width / 2
+                    color: recPill.isDark ? "black" : "white"
+                    opacity: 0; scale: 0
+
+                    states: State {
+                        name: "pressed"; when: moveMa.pressed
+                        PropertyChanges { target: moveRippleObj; opacity: 0.2; scale: 1 }
+                    }
+                    transitions: Transition {
+                        NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+                    }
+                }
 
                 DankIcon {
                     name: "open_with"; size: 16;
-                    color: {
-                        if (moveMa.pressed || root.recPillDragging) {
-                            // When physically interacting (Pressed/Dragging), use inverted contrast
-                            return recPill.isDark ? "black" : "white";
-                        } else if (moveMa.containsMouse) {
-                            // When just hovering, keep it the Primary accent color
-                            return Theme.primary;
-                        } else {
-                            // Default idle state
-                            return Theme.primary;
-                        }
-                    }                    anchors.centerIn: parent
-                    rotation: moveMa.containsMouse ? 90 : 0
+                    color: root.recPillDragging
+                        ? (recPill.isDark ? "black" : "white")
+                        : ((moveMa.containsMouse || moveMa.pressed) ? "white" : Theme.primary)
+                    anchors.centerIn: parent
+                    rotation: (moveMa.containsMouse ? 90 : 0) + (root.recPillDragging ? 360 : 0)
                     Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
+                    Behavior on color { ColorAnimation { duration: 250 } }
                 }
+
                 MouseArea {
                     id: moveMa
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor; hoverEnabled: true
