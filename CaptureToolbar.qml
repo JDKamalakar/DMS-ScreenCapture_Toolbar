@@ -391,7 +391,7 @@ PluginComponent {
     }
 
     function buildDmsScreenshotCommand(forceEditor) {
-        let useStdout = forceEditor || root.stdout;
+        let useStdout = forceEditor || (root.stdout && !root.enableEditorShortcut);
         let editorCommand = root.effectivePipeCommand();
         let dir = root.screenshotDir();
         let dmsStr = "dms screenshot";
@@ -419,7 +419,7 @@ PluginComponent {
     }
 
     function buildMultiMonitorScreenshotCommand(forceEditor) {
-        let useStdout = forceEditor || root.stdout;
+        let useStdout = forceEditor || (root.stdout && !root.enableEditorShortcut);
         let editorCommand = root.effectivePipeCommand();
         let dir = root.screenshotDir();
         let selectedFormat = root.format === "jpg" ? "jpeg" : root.format;
