@@ -614,7 +614,7 @@ PluginComponent {
         Item {
             anchors.fill: parent
             focus: overlay.visible
-            Keys.onPressed: (event) => {
+            Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Space) {
                     event.accepted = true;
                     let isCtrl = !!(event.modifiers & Qt.ControlModifier);
@@ -1077,7 +1077,7 @@ PluginComponent {
                     id: toolbarMa
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: (mouse) => mouse.accepted = true
+                    onClicked: function(mouse) { mouse.accepted = true; }
                 }
 
                 RowLayout {
