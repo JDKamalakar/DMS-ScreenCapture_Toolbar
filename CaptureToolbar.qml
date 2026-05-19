@@ -1077,8 +1077,11 @@ PluginComponent {
                     border.color: Theme.withAlpha(Theme.outline || "#ffffff", 0.1)
                     
                     layer.enabled: true
-                    layer.effect: DropShadow {
-                        transparentBorder: true; verticalOffset: 8; radius: 24; samples: 64; color: Qt.rgba(0,0,0,0.3)
+                    layer.effect: MultiEffect {
+                        shadowEnabled: true
+                        shadowVerticalOffset: 8
+                        shadowBlur: 0.4
+                        shadowColor: Qt.rgba(0,0,0,0.3)
                     }
                 }
 
@@ -1559,8 +1562,11 @@ PluginComponent {
                 border.color: Qt.rgba(1, 1, 1, 0.1)
 
                 layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true; verticalOffset: 2; radius: 8; samples: 16; color: Qt.rgba(0,0,0,0.4)
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowVerticalOffset: 2
+                    shadowBlur: 0.2
+                    shadowColor: Qt.rgba(0,0,0,0.4)
                 }
             }
 
