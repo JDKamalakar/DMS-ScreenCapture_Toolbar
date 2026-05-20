@@ -9,6 +9,7 @@ import Quickshell.Widgets
 import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
+import qs.Services
 
 PluginComponent {
     id: root
@@ -137,8 +138,11 @@ PluginComponent {
 
     Connections {
         target: PluginService
-        function onGlobalVarChanged(plugin, key, value) {
+        function onGlobalVarChanged(plugin, key) {
             if (plugin === "screenCaptureToolbar") {
+                const value = PluginService.getGlobalVar(plugin, key, undefined);
+                if (value === undefined) return;
+
                 if (key === "copyToClipboard") root.copyToClipboard = value;
                 else if (key === "saveToDisk") root.saveToDisk = value;
                 else if (key === "stdout") root.stdout = value;
