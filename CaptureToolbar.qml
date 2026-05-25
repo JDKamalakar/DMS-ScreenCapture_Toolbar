@@ -9,7 +9,6 @@ import Quickshell.Widgets
 import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
-import qs.Services
 
 PluginComponent {
     id: root
@@ -46,7 +45,7 @@ PluginComponent {
     property bool isMicCaptured: false
     property bool isMicMuted: false
     property int recordingElapsed: 0
-    property var recordingProcess: null
+    property int recordingPid: 0
     property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
     property bool showNotify: (pluginData && pluginData.showNotify !== undefined) ? pluginData.showNotify : true
     property bool enableEditorShortcut: (pluginData && pluginData.enableEditorShortcut != null) ? pluginData.enableEditorShortcut : true
@@ -64,6 +63,7 @@ PluginComponent {
     property real recPillDragStartPillX: 0
     property real recPillDragStartPillY: 0
     property bool recPillDragStarted: false
+    property bool _isSavingDrag: false
     readonly property int recPillWindowWidth: 460
     readonly property int recPillWindowHeight: 60
 
@@ -129,18 +129,20 @@ PluginComponent {
         else root.open();
     }
 
+    
+
     function _save(key, value) {
-        if (typeof PluginService !== "undefined" && PluginService) {
-            PluginService.savePluginData("screenCaptureToolbar", key, value);
-            PluginService.setGlobalVar("screenCaptureToolbar", key, value);
+        if (root.pluginService) {
+            root.pluginService.savePluginData("screenCaptureToolbar", key, value);
+            root.pluginService.setGlobalVar("screenCaptureToolbar", key, value);
         }
     }
 
     Connections {
-        target: PluginService
+        target: root.pluginService
         function onGlobalVarChanged(plugin, key) {
-            if (plugin === "screenCaptureToolbar") {
-                const value = PluginService.getGlobalVar(plugin, key, undefined);
+            if (plugin === "screenCaptureToolbar" && root.pluginService) {
+                const value = root.pluginService.getGlobalVar(plugin, key, undefined);
                 if (value === undefined) return;
 
                 if (key === "copyToClipboard") root.copyToClipboard = value;
@@ -260,6 +262,7 @@ PluginComponent {
     }
 
     function endRecPillDrag() {
+        root._isSavingDrag = true;
         root.recPillDragging = false;
         root.recPillDragStarted = false;
 
@@ -282,6 +285,7 @@ PluginComponent {
             root._save("recPillX", root.recPillX);
             root._save("recPillY", root.recPillY);
         }
+        root._isSavingDrag = false;
     }
 
     function ensureRecPillScreen() {
@@ -349,9 +353,11 @@ PluginComponent {
         root.toolbarOpacity = pluginData.toolbarOpacity !== undefined ? pluginData.toolbarOpacity : 0.85;
         root.pillOpacity = pluginData.pillOpacity !== undefined ? pluginData.pillOpacity : 0.92;
 
-        if (pluginData.recPillScreenName !== undefined) root.recPillScreenName = pluginData.recPillScreenName;
-        if (pluginData.recPillX !== undefined) root.recPillX = pluginData.recPillX;
-        if (pluginData.recPillY !== undefined) root.recPillY = pluginData.recPillY;
+        if (!root._isSavingDrag) {
+            if (pluginData.recPillScreenName !== undefined) root.recPillScreenName = pluginData.recPillScreenName;
+            if (pluginData.recPillX !== undefined) root.recPillX = pluginData.recPillX;
+            if (pluginData.recPillY !== undefined) root.recPillY = pluginData.recPillY;
+        }
     }
 
     function performCapture(forceEdit = false) {
@@ -531,12 +537,12 @@ PluginComponent {
                 "if command -v slurp >/dev/null 2>&1; then " +
                 "REGION=$(slurp -f '%wx%h+%x+%y') || { cancel_rec; exit 1; }; " +
                 "[ -z \"$REGION\" ] && { cancel_rec; exit 1; }; " +
-                "start_rec; gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + "; " +
+                "start_rec; exec gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + "; " +
                 "else " +
-                "start_rec; gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
                 "fi";
         } else {
-            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
+            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
         }
 
         let finalCmd = prelude !== "" ? prelude + "; " + scriptBody : scriptBody;
@@ -549,7 +555,8 @@ PluginComponent {
         }
         root.close();
 
-        Quickshell.execDetached(["bash", "-c", finalCmd]);
+        recorderProcess.command = ["bash", "-c", finalCmd];
+        recorderProcess.running = true;
 
         if (root.showNotify && !deferRecordingUi) {
             Quickshell.execDetached(["notify-send", "Recording Started", "Saving to " + dir]);
@@ -557,13 +564,18 @@ PluginComponent {
     }
 
     function stopRecording() {
-        Quickshell.execDetached(["pkill", "-SIGINT", "-f", "^gpu-screen-recorder"]);
+        if (root.recordingPid > 0) {
+            Quickshell.execDetached(["kill", "-SIGINT", String(root.recordingPid)]);
+        } else {
+            Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
+        }
         Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
         root.isRecording = false;
         root.isPaused = false;
         root.isMicCaptured = false;
         root.isMicMuted = false;
         root.recordingElapsed = 0;
+        root.recordingPid = 0;
 
         if (root.showNotify) {
             Quickshell.execDetached(["notify-send", "Recording Stopped", "Video saved to " + (root.videoCustomPath || "~/Videos")]);
@@ -571,12 +583,20 @@ PluginComponent {
     }
 
     function pauseRecording() {
-        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "^gpu-screen-recorder"]);
+        if (root.recordingPid > 0) {
+            Quickshell.execDetached(["kill", "-SIGUSR2", String(root.recordingPid)]);
+        } else {
+            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
+        }
         root.isPaused = true;
     }
 
     function resumeRecording() {
-        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "^gpu-screen-recorder"]);
+        if (root.recordingPid > 0) {
+            Quickshell.execDetached(["kill", "-SIGUSR2", String(root.recordingPid)]);
+        } else {
+            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
+        }
         root.isPaused = false;
     }
 
@@ -586,6 +606,23 @@ PluginComponent {
         let s = totalSeconds % 60;
         if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    Process {
+        id: recorderProcess
+        command: []
+        running: false
+        onStarted: {
+            root.recordingPid = processId;
+        }
+        onExited: exitCode => {
+            root.isRecording = false;
+            root.isPaused = false;
+            root.isMicCaptured = false;
+            root.isMicMuted = false;
+            root.recordingElapsed = 0;
+            root.recordingPid = 0;
+        }
     }
 
     // Recording elapsed timer
