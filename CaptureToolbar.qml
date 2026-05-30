@@ -115,7 +115,6 @@ PluginComponent {
         root.settingsExpanded = false;
         root.delayExpanded = false;
         overlay.visible = true;
-        overlay.forceActiveFocus();
     }
 
     function close() {
@@ -366,8 +365,8 @@ PluginComponent {
             return;
         }
 
-        // Apply delay only for non-interactive screenshot modes
-        let useDelay = !root.isVideoMode && root.captureMode !== "interactive" && root.delaySeconds > 0;
+        // Apply delay for screenshot modes
+        let useDelay = !root.isVideoMode && root.delaySeconds > 0;
         
         if (useDelay) {
             root.close(); // Close immediately so it's not in the shot
@@ -1191,7 +1190,7 @@ PluginComponent {
                         
                         ToolbarBtn { 
                             id: delayBtn
-                            visible: !root.isVideoMode && root.captureMode !== "interactive"
+                            visible: !root.isVideoMode
                             isFirst: true
                             iconName: "timer"
                             tooltipText: "Delay: " + root.delaySeconds + "s"
