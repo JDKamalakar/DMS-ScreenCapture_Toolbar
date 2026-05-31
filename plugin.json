@@ -3,7 +3,7 @@
   "name": "Screen Capture Toolbar",
   "description": "Premium pill-shaped toolbar for quick screenshots and screen recording",
   "category": "utilities",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "author": "JDKamalakar",
   "icon": "screenshot_region",
   "type": "daemon",

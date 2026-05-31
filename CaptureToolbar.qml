@@ -63,6 +63,7 @@ PluginComponent {
     property real recPillDragStartPillX: 0
     property real recPillDragStartPillY: 0
     property bool recPillDragStarted: false
+    property bool _isSavingDrag: false
     readonly property int recPillWindowWidth: 460
     readonly property int recPillWindowHeight: 60
 
@@ -114,7 +115,6 @@ PluginComponent {
         root.settingsExpanded = false;
         root.delayExpanded = false;
         overlay.visible = true;
-        overlay.forceActiveFocus();
     }
 
     function close() {
@@ -128,17 +128,22 @@ PluginComponent {
         else root.open();
     }
 
+    
+
     function _save(key, value) {
-        if (typeof PluginService !== "undefined" && PluginService) {
-            PluginService.savePluginData("screenCaptureToolbar", key, value);
-            PluginService.setGlobalVar("screenCaptureToolbar", key, value);
+        if (root.pluginService) {
+            root.pluginService.savePluginData("screenCaptureToolbar", key, value);
+            root.pluginService.setGlobalVar("screenCaptureToolbar", key, value);
         }
     }
 
     Connections {
-        target: PluginService
-        function onGlobalVarChanged(plugin, key, value) {
-            if (plugin === "screenCaptureToolbar") {
+        target: root.pluginService
+        function onGlobalVarChanged(plugin, key) {
+            if (plugin === "screenCaptureToolbar" && root.pluginService) {
+                const value = root.pluginService.getGlobalVar(plugin, key, undefined);
+                if (value === undefined) return;
+
                 if (key === "copyToClipboard") root.copyToClipboard = value;
                 else if (key === "saveToDisk") root.saveToDisk = value;
                 else if (key === "stdout") root.stdout = value;
@@ -256,6 +261,7 @@ PluginComponent {
     }
 
     function endRecPillDrag() {
+        root._isSavingDrag = true;
         root.recPillDragging = false;
         root.recPillDragStarted = false;
 
@@ -278,6 +284,7 @@ PluginComponent {
             root._save("recPillX", root.recPillX);
             root._save("recPillY", root.recPillY);
         }
+        root._isSavingDrag = false;
     }
 
     function ensureRecPillScreen() {
@@ -345,9 +352,11 @@ PluginComponent {
         root.toolbarOpacity = pluginData.toolbarOpacity !== undefined ? pluginData.toolbarOpacity : 0.85;
         root.pillOpacity = pluginData.pillOpacity !== undefined ? pluginData.pillOpacity : 0.92;
 
-        if (pluginData.recPillScreenName !== undefined) root.recPillScreenName = pluginData.recPillScreenName;
-        if (pluginData.recPillX !== undefined) root.recPillX = pluginData.recPillX;
-        if (pluginData.recPillY !== undefined) root.recPillY = pluginData.recPillY;
+        if (!root._isSavingDrag) {
+            if (pluginData.recPillScreenName !== undefined) root.recPillScreenName = pluginData.recPillScreenName;
+            if (pluginData.recPillX !== undefined) root.recPillX = pluginData.recPillX;
+            if (pluginData.recPillY !== undefined) root.recPillY = pluginData.recPillY;
+        }
     }
 
     function performCapture(forceEdit = false) {
@@ -356,8 +365,8 @@ PluginComponent {
             return;
         }
 
-        // Apply delay only for non-interactive screenshot modes
-        let useDelay = !root.isVideoMode && root.captureMode !== "interactive" && root.delaySeconds > 0;
+        // Apply delay for screenshot modes
+        let useDelay = !root.isVideoMode && root.delaySeconds > 0;
         
         if (useDelay) {
             root.close(); // Close immediately so it's not in the shot
@@ -527,12 +536,28 @@ PluginComponent {
                 "if command -v slurp >/dev/null 2>&1; then " +
                 "REGION=$(slurp -f '%wx%h+%x+%y') || { cancel_rec; exit 1; }; " +
                 "[ -z \"$REGION\" ] && { cancel_rec; exit 1; }; " +
-                "start_rec; gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + "; " +
+                "start_rec; exec gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + "; " +
                 "else " +
-                "start_rec; gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "fi";
+        } else if (root.captureMode === "all") {
+            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
+                "HAS_PORTAL=\"\"; " +
+                "if command -v dbus-send >/dev/null 2>&1; then " +
+                "dbus-send --dest=org.freedesktop.portal.Desktop --print-reply /org/freedesktop/portal/desktop org.freedesktop.DBus.Introspectable.Introspect 2>/dev/null | grep -q \"org.freedesktop.portal.ScreenCast\" && HAS_PORTAL=\"1\"; " +
+                "elif command -v busctl >/dev/null 2>&1; then " +
+                "busctl introspect org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop 2>/dev/null | grep -q \"org.freedesktop.portal.ScreenCast\" && HAS_PORTAL=\"1\"; " +
+                "fi; " +
+                "if [ -n \"$HAS_PORTAL\" ] && { [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; }; then " +
+                "exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "elif [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; then " +
+                "notify-send \"Multi-Monitor Recording\" \"Recording focused screen. Install a desktop portal (e.g. xdg-desktop-portal-niri) to record all screens on Wayland.\" -t 5000; " +
+                "exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix + "; " +
+                "else " +
+                "exec gpu-screen-recorder -w screen" + gsrSuffix + "; " +
                 "fi";
         } else {
-            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
+            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
         }
 
         let finalCmd = prelude !== "" ? prelude + "; " + scriptBody : scriptBody;
@@ -553,7 +578,7 @@ PluginComponent {
     }
 
     function stopRecording() {
-        Quickshell.execDetached(["pkill", "-SIGINT", "-f", "^gpu-screen-recorder"]);
+        Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
         Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
         root.isRecording = false;
         root.isPaused = false;
@@ -567,12 +592,12 @@ PluginComponent {
     }
 
     function pauseRecording() {
-        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "^gpu-screen-recorder"]);
+        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
         root.isPaused = true;
     }
 
     function resumeRecording() {
-        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "^gpu-screen-recorder"]);
+        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
         root.isPaused = false;
     }
 
@@ -1150,7 +1175,7 @@ PluginComponent {
                         
                         ToolbarBtn { 
                             id: delayBtn
-                            visible: !root.isVideoMode && root.captureMode !== "interactive"
+                            visible: !root.isVideoMode
                             isFirst: true
                             iconName: "timer"
                             tooltipText: "Delay: " + root.delaySeconds + "s"
