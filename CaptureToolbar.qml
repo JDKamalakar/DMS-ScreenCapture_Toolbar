@@ -45,7 +45,7 @@ PluginComponent {
     property bool isMicCaptured: false
     property bool isMicMuted: false
     property int recordingElapsed: 0
-    property int recordingPid: 0
+    property var recordingProcess: null
     property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
     property bool showNotify: (pluginData && pluginData.showNotify !== undefined) ? pluginData.showNotify : true
     property bool enableEditorShortcut: (pluginData && pluginData.enableEditorShortcut != null) ? pluginData.enableEditorShortcut : true
@@ -540,6 +540,22 @@ PluginComponent {
                 "else " +
                 "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
                 "fi";
+        } else if (root.captureMode === "all") {
+            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
+                "HAS_PORTAL=\"\"; " +
+                "if command -v dbus-send >/dev/null 2>&1; then " +
+                "dbus-send --dest=org.freedesktop.portal.Desktop --print-reply /org/freedesktop/portal/desktop org.freedesktop.DBus.Introspectable.Introspect 2>/dev/null | grep -q \"org.freedesktop.portal.ScreenCast\" && HAS_PORTAL=\"1\"; " +
+                "elif command -v busctl >/dev/null 2>&1; then " +
+                "busctl introspect org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop 2>/dev/null | grep -q \"org.freedesktop.portal.ScreenCast\" && HAS_PORTAL=\"1\"; " +
+                "fi; " +
+                "if [ -n \"$HAS_PORTAL\" ] && { [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; }; then " +
+                "exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "elif [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; then " +
+                "notify-send \"Multi-Monitor Recording\" \"Recording focused screen. Install a desktop portal (e.g. xdg-desktop-portal-niri) to record all screens on Wayland.\" -t 5000; " +
+                "exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix + "; " +
+                "else " +
+                "exec gpu-screen-recorder -w screen" + gsrSuffix + "; " +
+                "fi";
         } else {
             scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
         }
@@ -554,8 +570,7 @@ PluginComponent {
         }
         root.close();
 
-        recorderProcess.command = ["bash", "-c", finalCmd];
-        recorderProcess.running = true;
+        Quickshell.execDetached(["bash", "-c", finalCmd]);
 
         if (root.showNotify && !deferRecordingUi) {
             Quickshell.execDetached(["notify-send", "Recording Started", "Saving to " + dir]);
@@ -563,18 +578,13 @@ PluginComponent {
     }
 
     function stopRecording() {
-        if (root.recordingPid > 0) {
-            Quickshell.execDetached(["kill", "-SIGINT", String(root.recordingPid)]);
-        } else {
-            Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
-        }
+        Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
         Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
         root.isRecording = false;
         root.isPaused = false;
         root.isMicCaptured = false;
         root.isMicMuted = false;
         root.recordingElapsed = 0;
-        root.recordingPid = 0;
 
         if (root.showNotify) {
             Quickshell.execDetached(["notify-send", "Recording Stopped", "Video saved to " + (root.videoCustomPath || "~/Videos")]);
@@ -582,20 +592,12 @@ PluginComponent {
     }
 
     function pauseRecording() {
-        if (root.recordingPid > 0) {
-            Quickshell.execDetached(["kill", "-SIGUSR2", String(root.recordingPid)]);
-        } else {
-            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
-        }
+        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
         root.isPaused = true;
     }
 
     function resumeRecording() {
-        if (root.recordingPid > 0) {
-            Quickshell.execDetached(["kill", "-SIGUSR2", String(root.recordingPid)]);
-        } else {
-            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
-        }
+        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
         root.isPaused = false;
     }
 
@@ -605,23 +607,6 @@ PluginComponent {
         let s = totalSeconds % 60;
         if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
-    }
-
-    Process {
-        id: recorderProcess
-        command: []
-        running: false
-        onStarted: {
-            root.recordingPid = processId;
-        }
-        onExited: exitCode => {
-            root.isRecording = false;
-            root.isPaused = false;
-            root.isMicCaptured = false;
-            root.isMicMuted = false;
-            root.recordingElapsed = 0;
-            root.recordingPid = 0;
-        }
     }
 
     // Recording elapsed timer
