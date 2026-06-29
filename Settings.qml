@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Common
 import qs.Modules.Plugins
 import qs.Widgets
+import qs.Services
 import QtCore
 
 PluginSettings {
@@ -50,6 +51,31 @@ PluginSettings {
                     if (parts.length >= 2) {
                         var name = parts[0];
                         var label = parts[1];
+                        if (typeof AudioService !== "undefined" && AudioService) {
+                            var found = false;
+                            if (AudioService.sources) {
+                                for (var k = 0; k < AudioService.sources.length; k++) {
+                                    if (AudioService.sources[k].name === name || AudioService.sources[k].name === name + ".monitor" || name.indexOf(AudioService.sources[k].name) !== -1) {
+                                        if (AudioService.sources[k].description) {
+                                            label = AudioService.sources[k].description;
+                                            found = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found && AudioService.sinks) {
+                                for (var k = 0; k < AudioService.sinks.length; k++) {
+                                    if (AudioService.sinks[k].name === name || AudioService.sinks[k].name + ".monitor" === name || name.indexOf(AudioService.sinks[k].name) !== -1) {
+                                        if (AudioService.sinks[k].description) {
+                                            label = AudioService.sinks[k].description;
+                                            found = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         var exists = false;
                         for (var i = 0; i < root.micList.length; i++) {
                             if (root.micList[i].value === name) exists = true;
@@ -119,6 +145,7 @@ PluginSettings {
 
         // --- Screenshot Settings ---
         Rectangle {
+            z: 100
             width: parent.width
             height: captureGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -146,6 +173,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 1000
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "camera"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -165,6 +193,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 999
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "monitor_weight"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -180,6 +209,7 @@ PluginSettings {
 
         // --- Output Settings ---
         Rectangle {
+            z: 99
             width: parent.width
             height: outputGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -207,6 +237,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 998
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "image"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -224,6 +255,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 997
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -236,6 +268,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 996
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -248,6 +281,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 995
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "timer"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -269,6 +303,7 @@ PluginSettings {
 
         // --- Video Settings ---
         Rectangle {
+            z: 98
             width: parent.width
             height: videoGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -296,6 +331,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 994
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "videocam"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -313,6 +349,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 993
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -325,6 +362,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 992
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -337,6 +375,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 991
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "speed"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -353,6 +392,7 @@ PluginSettings {
                     }
                 }
                 Row {
+                    z: 990
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -365,6 +405,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 989
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -383,6 +424,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 988
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
                     DankIcon { name: "settings_applications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -403,6 +445,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 987
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
                     DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -420,6 +463,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 986
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.captureMode === "monitor"
                     DankIcon { name: "desktop_windows"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -434,6 +478,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 985
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -448,6 +493,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 984
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
                     DankIcon { name: "mic_none"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -535,6 +581,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 983
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -547,6 +594,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 982
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -562,6 +610,7 @@ PluginSettings {
 
         // --- Editor & Shortcuts ---
         Rectangle {
+            z: 97
             width: parent.width
             height: actionsGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -589,6 +638,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 981
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "save"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -601,6 +651,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 980
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -613,6 +664,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 979
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "output"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -625,6 +677,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 978
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "keyboard"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -637,6 +690,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 977
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "swap_horiz"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -649,6 +703,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 976
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "input"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -664,6 +719,7 @@ PluginSettings {
 
         // --- Interface ---
         Rectangle {
+            z: 96
             width: parent.width
             height: interfaceGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -691,6 +747,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 975
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "mouse"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -703,6 +760,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 974
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "notifications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -715,6 +773,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 973
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "pill"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -730,6 +789,7 @@ PluginSettings {
 
         // --- Styles ---
         Rectangle {
+            z: 95
             width: parent.width
             height: interfaceStylesGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -757,6 +817,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 972
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "opacity"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -768,6 +829,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 971
                     width: parent.width; spacing: Theme.spacingM
                     Column {
                         width: parent.width
@@ -778,6 +840,7 @@ PluginSettings {
                 }
 
                 Row {
+                    z: 970
                     width: parent.width; spacing: Theme.spacingM
                     Column {
                         width: parent.width
@@ -791,6 +854,7 @@ PluginSettings {
 
         // --- Commands & Shortcuts ---
         Rectangle {
+            z: 94
             width: parent.width
             height: commandsGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -806,6 +870,7 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
+                    z: 969
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     StyledText { text: "Commands & Shortcuts"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }

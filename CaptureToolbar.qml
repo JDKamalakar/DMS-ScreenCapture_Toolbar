@@ -8,6 +8,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import qs.Common
 import qs.Widgets
+import qs.Services
 import qs.Modules.Plugins
 
 PluginComponent {
@@ -70,6 +71,31 @@ PluginComponent {
                     if (parts.length >= 2) {
                         var name = parts[0];
                         var label = parts[1];
+                        if (typeof AudioService !== "undefined" && AudioService) {
+                            var found = false;
+                            if (AudioService.sources) {
+                                for (var k = 0; k < AudioService.sources.length; k++) {
+                                    if (AudioService.sources[k].name === name || AudioService.sources[k].name === name + ".monitor" || name.indexOf(AudioService.sources[k].name) !== -1) {
+                                        if (AudioService.sources[k].description) {
+                                            label = AudioService.sources[k].description;
+                                            found = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found && AudioService.sinks) {
+                                for (var k = 0; k < AudioService.sinks.length; k++) {
+                                    if (AudioService.sinks[k].name === name || AudioService.sinks[k].name + ".monitor" === name || name.indexOf(AudioService.sinks[k].name) !== -1) {
+                                        if (AudioService.sinks[k].description) {
+                                            label = AudioService.sinks[k].description;
+                                            found = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         var exists = false;
                         for (var i = 0; i < root.micList.length; i++) {
                             if (root.micList[i].value === name) exists = true;
