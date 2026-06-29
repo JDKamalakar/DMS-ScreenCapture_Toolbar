@@ -284,6 +284,7 @@ PluginComponent {
                 else if (key === "videoQuality") root.videoQuality = value;
                 else if (key === "videoMonitor") root.videoMonitor = value;
                 else if (key === "videoMic") root.videoMic = value;
+                else if (key === "showAdvancedSettings") root.showAdvancedSettings = value;
 
                 else if (key === "pipeCommand") root.pipeCommand = value;
                 else if (key === "toolbarOpacity") root.toolbarOpacity = value;
@@ -469,6 +470,7 @@ PluginComponent {
         root.videoQuality = pluginData.videoQuality || "medium";
         root.videoMonitor = pluginData.videoMonitor || "default";
         root.videoMic = pluginData.videoMic || "default";
+        root.showAdvancedSettings = pluginData.showAdvancedSettings !== undefined ? pluginData.showAdvancedSettings : false;
 
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
         root.showNotify = pluginData.showNotify !== undefined ? pluginData.showNotify : true;
