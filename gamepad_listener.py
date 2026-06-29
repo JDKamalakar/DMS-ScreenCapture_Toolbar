@@ -86,15 +86,15 @@ def main():
                     if is_pressed and not was_pressed:
                         if number == 2: btn_name = "LT"
                         elif number == 5: btn_name = "RT"
-                        elif number == 6: btn_name = "RIGHT"
-                        elif number == 7: btn_name = "DOWN"
+                        elif number == 6 or number == 0: btn_name = "RIGHT"
+                        elif number == 7 or number == 1: btn_name = "DOWN"
                     axis_state[f"{f.fileno()}_{number}_pos"] = is_pressed
                     
                     is_neg = value < -16000
                     was_neg = axis_state.get(f"{f.fileno()}_{number}_neg", False)
                     if is_neg and not was_neg:
-                        if number == 6: btn_name = "LEFT"
-                        elif number == 7: btn_name = "UP"
+                        if number == 6 or number == 0: btn_name = "LEFT"
+                        elif number == 7 or number == 1: btn_name = "UP"
                     axis_state[f"{f.fileno()}_{number}_neg"] = is_neg
                 
                 if btn_name:

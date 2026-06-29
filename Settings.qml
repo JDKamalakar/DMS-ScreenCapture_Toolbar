@@ -757,7 +757,7 @@ PluginSettings {
                     ToggleSetting {
                         width: parent.width - 22 - Theme.spacingM
                         settingKey: "enableController"
-                        label: "Enable Controller Support"
+                        label: "Enable Controller Support (BETA)"
                         description: "Allow gamepads to trigger and navigate the toolbar via IPC"
                         defaultValue: false
                     }
