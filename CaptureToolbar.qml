@@ -184,6 +184,7 @@ PluginComponent {
 
     // -- IPC ------------------------------------------------------------------
     IpcHandler {
+        target: "screenCaptureToolbar"
 
         function toggle(): string {
             root.toggle();
@@ -200,6 +201,7 @@ PluginComponent {
             return "closed";
         }
 
+        /** Reset recording UI if interactive video setup fails (e.g. slurp cancelled). Called from bash. */
         function cancelRecording(): string {
             root.isRecording = false;
             root.isPaused = false;
@@ -209,6 +211,7 @@ PluginComponent {
             return "cancelled";
         }
 
+        /** Show pill + timer only after region selection / portal begins recording (interactive video). Called from bash. */
         function recordingStarted(): string {
             root.isRecording = true;
             root.isPaused = false;
@@ -219,8 +222,6 @@ PluginComponent {
             }
             return "started";
         }
-
-        target: "screenCaptureToolbar"
     }
 
 
@@ -888,13 +889,14 @@ PluginComponent {
                 border.color: Qt.rgba(1, 1, 1, 0.1)
                 clip: true
 
+                // Position strictly above the right side of the pill
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.horizontalCenter: pillContainer.horizontalCenter
+                anchors.right: pillContainer.right
 
                 opacity: root.settingsExpanded ? 1 : 0
                 scale: root.settingsExpanded ? 1 : 0.9
-                transformOrigin: Item.Bottom
+                transformOrigin: Item.BottomRight
 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
                 Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
@@ -916,8 +918,7 @@ PluginComponent {
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
-                    anchors.right: parent.right
-                    anchors.rightMargin: 92 // Adjusted for 340px width
+                    anchors.horizontalCenter: settingsBtn.horizontalCenter
                     border.width: 1; border.color: settingsBubble.border.color
                     z: -1
                 }
@@ -1457,11 +1458,12 @@ PluginComponent {
                 
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.horizontalCenter: pillContainer.horizontalCenter
+                anchors.right: pillContainer.right
+                anchors.rightMargin: 0 // Flush right to match settingsBubble
                 
                 opacity: root.delayExpanded ? 1 : 0
                 scale: root.delayExpanded ? 1 : 0.9
-                transformOrigin: Item.Bottom
+                transformOrigin: Item.BottomRight
                 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
                 Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
@@ -1483,8 +1485,7 @@ PluginComponent {
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
-                    anchors.right: parent.right
-                    anchors.rightMargin: 138 // Perfectly centered above the delay button
+                    anchors.horizontalCenter: delayBtn.horizontalCenter
                     border.width: 1; border.color: delayBubble.border.color
                     z: -1
                 }
@@ -1572,7 +1573,17 @@ PluginComponent {
                     shadowColor: Qt.rgba(0,0,0,0.5)
                 }
 
-
+                // Triangle pointer
+                Rectangle {
+                    width: 16; height: 16
+                    color: monitorBubble.color
+                    rotation: 45
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: -8
+                    anchors.horizontalCenter: monitorBtn.horizontalCenter
+                    border.width: 1; border.color: monitorBubble.border.color
+                    z: -1
+                }
 
                 ColumnLayout {
                     id: monitorBubbleCol
