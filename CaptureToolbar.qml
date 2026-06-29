@@ -1702,22 +1702,14 @@ PluginComponent {
                         }
                         ToolbarBtn {
                             iconName: "monitor";
-                            active: root.captureMode === "full" || root.captureMode === "monitor"
-                            tooltipText: root.isVideoMode ? "Record Monitor" : "Focused Screen"
+                            active: root.captureMode === "monitor"
+                            tooltipText: root.isVideoMode ? "Record Monitor" : "Capture Monitor"
                             onClicked: { 
-                                if (root.isVideoMode) {
-                                    root.captureMode = "monitor";
-                                    root._save("captureMode", "monitor");
-                                    root.monitorExpanded = !root.monitorExpanded;
-                                    root.settingsExpanded = false;
-                                    root.delayExpanded = false;
-                                } else {
-                                    root.captureMode = "full";
-                                    root._save("captureMode", "full");
-                                    root.monitorExpanded = false;
-                                    root.settingsExpanded = false;
-                                    root.delayExpanded = false;
-                                }
+                                root.captureMode = "monitor";
+                                root._save("captureMode", "monitor");
+                                root.monitorExpanded = !root.monitorExpanded;
+                                root.settingsExpanded = false;
+                                root.delayExpanded = false;
                             }
                         }
                         ToolbarBtn {
