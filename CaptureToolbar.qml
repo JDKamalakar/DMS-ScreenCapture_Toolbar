@@ -867,7 +867,7 @@ PluginComponent {
             // Floating Settings Bubble
             Rectangle {
                 id: settingsBubble
-                width: 340
+                width: root.isVideoMode ? 660 : 340
                 height: root.settingsExpanded ? settingsCol.implicitHeight + 40 : 0
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
@@ -885,6 +885,7 @@ PluginComponent {
                 transformOrigin: Item.BottomRight
 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
+                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
                 Behavior on opacity { NumberAnimation { duration: 150 } }
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
@@ -923,6 +924,14 @@ PluginComponent {
                         StyledText { text: "Options"; font.bold: true; font.pixelSize: 15; color: Theme.surfaceText; Layout.fillWidth: true }
                     }
 
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 12
                     // Toggles Segment
                     Rectangle {
                         Layout.fillWidth: true
@@ -1111,6 +1120,13 @@ PluginComponent {
                             }
                         }
                     }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 12
+                            visible: root.isVideoMode
                     // Video FPS Segment
                     Rectangle {
                         Layout.fillWidth: true
@@ -1446,6 +1462,8 @@ PluginComponent {
                             }
                         }
                     }
+                                        }
+                    }
                 }
             }
 
@@ -1470,6 +1488,7 @@ PluginComponent {
                 transformOrigin: Item.BottomRight
                 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
+                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
                 Behavior on opacity { NumberAnimation { duration: 150 } }
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
