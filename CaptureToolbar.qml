@@ -867,7 +867,7 @@ PluginComponent {
             // Floating Settings Bubble
             Rectangle {
                 id: settingsBubble
-                width: root.isVideoMode ? 660 : 340
+                width: (root.showAdvancedSettings && root.isVideoMode) ? 660 : 340
                 height: root.settingsExpanded ? settingsCol.implicitHeight + 40 : 0
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
@@ -1126,7 +1126,7 @@ PluginComponent {
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignTop
                             spacing: 12
-                            visible: root.isVideoMode
+                            visible: root.showAdvancedSettings && root.isVideoMode
                     // Video FPS Segment
                     Rectangle {
                         Layout.fillWidth: true
