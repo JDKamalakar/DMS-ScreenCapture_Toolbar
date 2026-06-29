@@ -1715,6 +1715,7 @@ PluginComponent {
 
                         }
                         ToolbarBtn {
+                            id: monitorBtn
                             iconName: "monitor";
                             active: root.captureMode === "monitor"
                             tooltipText: (root.isVideoMode ? "Record Monitor - " : "Capture Monitor - ") + root.getMonitorLabel(root.videoMonitor)
