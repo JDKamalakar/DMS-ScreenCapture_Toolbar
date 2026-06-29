@@ -30,6 +30,92 @@ PluginComponent {
     property bool stdout: (pluginData && pluginData.stdout != null) ? pluginData.stdout : false
     property string pipeCommand: (pluginData && pluginData.pipeCommand) || ""
     readonly property string defaultPipeCommand: "{ mkdir -p \"$HOME/Pictures/Screenshots\"; satty --filename - --output-filename \"$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png\"; }"
+
+    property var monitorList: ["default"]
+    property var micList: [{label: "Default", value: "default"}]
+    property bool isTestingMic: false
+    property bool isPlayingMic: false
+    property bool isProcessingMic: false
+    property int micTestCountdown: 0
+
+    Process {
+        command: ["bash", "-c", "hyprctl monitors -j 2>/dev/null | jq -r '.[].name' || xrandr --listmonitors 2>/dev/null | awk '{print $4}' | grep -v '^$'"]
+        running: true
+        stdout: SplitParser {
+            onRead: function(data) {
+                var name = data.trim();
+                if (name !== "") {
+                    var exists = false;
+                    for (var i = 0; i < root.monitorList.length; i++) {
+                        if (root.monitorList[i] === name) exists = true;
+                    }
+                    if (!exists) {
+                        var l = root.monitorList.slice();
+                        l.push(name);
+                        root.monitorList = l;
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        command: ["bash", "-c", "gpu-screen-recorder --list-audio-devices 2>/dev/null | grep -v '\.monitor' | grep -v 'output' | grep -v 'default_input'"]
+        running: true
+        stdout: SplitParser {
+            onRead: function(data) {
+                var line = data.trim();
+                if (line !== "") {
+                    var parts = line.split("|");
+                    if (parts.length >= 2) {
+                        var name = parts[0];
+                        var label = parts[1];
+                        var exists = false;
+                        for (var i = 0; i < root.micList.length; i++) {
+                            if (root.micList[i].value === name) exists = true;
+                        }
+                        if (!exists) {
+                            var l = root.micList.slice();
+                            l.push({label: label, value: name});
+                            root.micList = l;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        id: micTestProcess
+        command: []
+        running: false
+        stdout: SplitParser {
+            onRead: function(data) {
+                var line = data.trim();
+                if (line === "PLAYING") {
+                    root.isProcessingMic = false;
+                    root.isPlayingMic = true;
+                } else if (line === "PROCESSING") {
+                    root.isPlayingMic = false;
+                    root.isProcessingMic = true;
+                } else if (line === "RECORDING") {
+                    root.micTestCountdown = 0;
+                } else if (line.indexOf("COUNTDOWN") === 0) {
+                    var parts = line.split(" ");
+                    if (parts.length > 1) {
+                        root.micTestCountdown = parseInt(parts[1]);
+                    }
+                }
+            }
+        }
+        onExited: {
+            root.isTestingMic = false;
+            root.isPlayingMic = false;
+            root.isProcessingMic = false;
+            root.micTestCountdown = 0;
+        }
+    }
+
     property bool multiMonitorScreenshot: (pluginData && pluginData.multiMonitorScreenshot != null) ? pluginData.multiMonitorScreenshot : false
 
     // -- Video Settings ------------------------------------------------------
@@ -38,8 +124,14 @@ PluginComponent {
     property string videoFormat: (pluginData && pluginData.videoFormat) || "mkv"
     property int videoFPS: (pluginData && pluginData.videoFPS) || 60
     property string videoCodec: (pluginData && pluginData.videoCodec) || "auto"
+    property string audioCodec: (pluginData && pluginData.audioCodec) || "aac"
+    property bool showAdvancedSettings: (pluginData && pluginData.showAdvancedSettings != null) ? pluginData.showAdvancedSettings : false
     property string videoCustomPath: (pluginData && pluginData.videoCustomPath) || ""
     property string videoFilename: (pluginData && pluginData.videoFilename) || ""
+    property string videoQuality: (pluginData && pluginData.videoQuality) || "medium"
+    property string videoMonitor: (pluginData && pluginData.videoMonitor) || "default"
+    property string videoMic: (pluginData && pluginData.videoMic) || "default"
+
     property bool isRecording: false
     property bool isPaused: false
     property bool isMicCaptured: false
@@ -163,6 +255,10 @@ PluginComponent {
                 else if (key === "videoFPS") root.videoFPS = value;
                 else if (key === "videoCustomPath") root.videoCustomPath = value;
                 else if (key === "videoFilename") root.videoFilename = value;
+                else if (key === "videoQuality") root.videoQuality = value;
+                else if (key === "videoMonitor") root.videoMonitor = value;
+                else if (key === "videoMic") root.videoMic = value;
+
                 else if (key === "pipeCommand") root.pipeCommand = value;
                 else if (key === "toolbarOpacity") root.toolbarOpacity = value;
                 else if (key === "pillOpacity") root.pillOpacity = value;
@@ -344,6 +440,10 @@ PluginComponent {
         root.videoFPS = pluginData.videoFPS || 60;
         root.videoCustomPath = pluginData.videoCustomPath || "";
         root.videoFilename = pluginData.videoFilename || "";
+        root.videoQuality = pluginData.videoQuality || "medium";
+        root.videoMonitor = pluginData.videoMonitor || "default";
+        root.videoMic = pluginData.videoMic || "default";
+
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
         root.showNotify = pluginData.showNotify !== undefined ? pluginData.showNotify : true;
         root.enableEditorShortcut = pluginData.enableEditorShortcut !== undefined ? pluginData.enableEditorShortcut : true;
@@ -405,6 +505,7 @@ PluginComponent {
         let dir = root.screenshotDir();
         let dmsStr = "dms screenshot";
         if (root.captureMode === "full") dmsStr += " full";
+        else if (root.captureMode === "monitor") dmsStr += " monitor";
         else if (root.captureMode === "all") dmsStr += " all";
         else if (root.captureMode === "window") dmsStr += " window";
 
@@ -510,8 +611,11 @@ PluginComponent {
         prepends.push("MONITOR=\"\"; if command -v niri >/dev/null 2>&1; then MONITOR=$(niri msg -j outputs 2>/dev/null | jq -r 'keys[0]'); elif command -v hyprctl >/dev/null 2>&1; then MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name'); fi; if [ -z \"$MONITOR\" ] || [ \"$MONITOR\" = \"null\" ]; then MONITOR=\"portal\"; fi");
 
         let gsrSuffix = " -c " + root.videoFormat;
+        if (root.videoQuality !== "" && root.videoQuality !== "default")
+            gsrSuffix += " -q " + root.videoQuality;
+
         gsrSuffix += " -f " + root.videoFPS;
-        gsrSuffix += " -ac aac";
+        gsrSuffix += " -ac " + root.audioCodec;
 
         let audioArgs = [];
         if (root.recordAudio) audioArgs.push("$SYSTEM_AUDIO");
@@ -540,6 +644,9 @@ PluginComponent {
                 "else " +
                 "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
                 "fi";
+        } else if (root.captureMode === "monitor") {
+            let mon = (root.videoMonitor !== "default") ? root.videoMonitor : "portal";
+            execCmd = "sleep " + root.delaySeconds + "; " + prepends.join(" ") + " gpu-screen-recorder -w " + mon + gsrSuffix + " -o " + filename;
         } else if (root.captureMode === "all") {
             scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
                 "HAS_PORTAL=\"\"; " +
@@ -677,7 +784,7 @@ PluginComponent {
             anchors.fill: parent
             color: "black"
             opacity: overlay.visible ? 0.15 : 0
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 150 } }
         }
 
         // Local Tooltip with "above icon" logic - inside the window
@@ -752,8 +859,8 @@ PluginComponent {
                 transformOrigin: Item.BottomRight
 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 250 } }
-                Behavior on scale { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
                 layer.enabled: true
                 layer.effect: MultiEffect {
@@ -978,6 +1085,341 @@ PluginComponent {
                             }
                         }
                     }
+                    // Video FPS Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: videoFpsCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.isVideoMode
+
+                        ColumnLayout {
+                            id: videoFpsCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "speed"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Video FPS"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankButtonGroup {
+                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
+                                scale: 0.95; transformOrigin: Item.Left
+                                model: ["24 FPS", "30 FPS", "60 FPS"]
+                                currentIndex: {
+                                    if (root.videoFPS == 30) return 1;
+                                    if (root.videoFPS == 60) return 2;
+                                    return 0; // 24
+                                }
+                                onSelectionChanged: function(idx, sel) {
+                                    if (sel) {
+                                        var fps = [24, 30, 60];
+                                        root.videoFPS = fps[idx];
+                                        root._save("videoFPS", root.videoFPS);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Video Quality Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: videoQualityCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.isVideoMode
+
+                        ColumnLayout {
+                            id: videoQualityCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "high_quality"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Video Quality (CRF/Preset)"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankButtonGroup {
+                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
+                                scale: 0.95; transformOrigin: Item.Left
+                                model: ["Med", "High", "V.High", "Ultra"]
+                                currentIndex: {
+                                    if (root.videoQuality === "high") return 1;
+                                    if (root.videoQuality === "very_high") return 2;
+                                    if (root.videoQuality === "ultra") return 3;
+                                    return 0;
+                                }
+                                onSelectionChanged: function(idx, sel) {
+                                    if (sel) {
+                                        var q = ["medium", "high", "very_high", "ultra"];
+                                        root.videoQuality = q[idx];
+                                        root._save("videoQuality", root.videoQuality);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Video Codec Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: videoCodecCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.isVideoMode && root.showAdvancedSettings
+
+                        ColumnLayout {
+                            id: videoCodecCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "settings_applications"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Video Codec"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankDropdown {
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: {
+                                    var codes = {"auto": "Auto (Recomended)", "av1": "AV1", "av1_10bit": "AV1 (10 Bit)", "av1_hdr": "AV1 (HDR)", "h264": "H.264 SE (Not Recomended)"};
+                                    return codes[root.videoCodec] || "Auto (Recomended)";
+                                }
+                                options: ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"]
+                                onValueChanged: {
+                                    var opts = ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"];
+                                    var vals = ["auto", "av1", "av1_10bit", "av1_hdr", "h264"];
+                                    for (var i = 0; i < opts.length; i++) {
+                                        if (opts[i] === String(value)) {
+                                            root.videoCodec = vals[i];
+                                            root._save("videoCodec", root.videoCodec);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Audio Codec Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: audioCodecCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.isVideoMode && root.showAdvancedSettings
+
+                        ColumnLayout {
+                            id: audioCodecCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "audio_file"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Audio Codec"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankDropdown {
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: {
+                                    var codes = {"opus": "Opus (Recomended)", "aac": "AAC"};
+                                    return codes[root.audioCodec] || "AAC";
+                                }
+                                options: ["Opus (Recomended)", "AAC"]
+                                onValueChanged: {
+                                    var opts = ["Opus (Recomended)", "AAC"];
+                                    var vals = ["opus", "aac"];
+                                    for (var i = 0; i < opts.length; i++) {
+                                        if (opts[i] === String(value)) {
+                                            root.audioCodec = vals[i];
+                                            root._save("audioCodec", root.audioCodec);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Monitor Selector Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: monitorCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.isVideoMode && root.captureMode === "monitor"
+
+                        ColumnLayout {
+                            id: monitorCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "desktop_windows"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Monitor Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankButtonGroup {
+                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
+                                scale: 0.95; transformOrigin: Item.Left
+                                model: root.monitorList
+                                currentIndex: Math.max(0, root.monitorList.indexOf(root.videoMonitor))
+                                onSelectionChanged: function(idx, sel) {
+                                    if (sel) {
+                                        root.videoMonitor = root.monitorList[idx];
+                                        root._save("videoMonitor", root.videoMonitor);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Mic Selector Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: micCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.isVideoMode && root.recordMic
+
+                        ColumnLayout {
+                            id: micCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Mic Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankDropdown {
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: {
+                                    for (var i = 0; i < root.micList.length; i++) {
+                                        if (root.micList[i].value === root.videoMic) return root.micList[i].label;
+                                    }
+                                    return root.videoMic || "Default";
+                                }
+                                options: root.micList.map(function(item) { return item.label; })
+                                onValueChanged: {
+                                    for (var i = 0; i < root.micList.length; i++) {
+                                        if (root.micList[i].label === value) {
+                                            root.videoMic = root.micList[i].value;
+                                            root._save("videoMic", root.videoMic);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Mic Testing Button
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 32
+                                radius: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? 16 : 8
+                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMa2.containsMouse ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.1) : "transparent")
+                                border.color: Theme.primary || "#38bdf8"
+                                border.width: 1
+                                
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    DankIcon {
+                                        id: testMicIcon
+                                        name: root.isTestingMic ? (root.isProcessingMic ? "autorenew" : (root.isPlayingMic ? "volume_up" : (root.micTestCountdown > 0 ? "timer" : "stop"))) : "fiber_manual_record"
+                                        size: 16
+                                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
+                                        
+                                        transformOrigin: Item.Center
+                                        
+                                        RotationAnimator on rotation {
+                                            from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: root.isProcessingMic
+                                        }
+                                        
+                                        SequentialAnimation on scale {
+                                            id: pulseAnim
+                                            loops: Animation.Infinite; running: root.isTestingMic && !root.isProcessingMic
+                                            NumberAnimation { to: 1.25; duration: 500; easing.type: Easing.InOutQuad }
+                                            NumberAnimation { to: 1.0; duration: 500; easing.type: Easing.InOutQuad }
+                                        }
+                                        
+                                        onNameChanged: {
+                                            if (!root.isProcessingMic) rotation = 0;
+                                            if (!pulseAnim.running) scale = 1.0;
+                                        }
+                                    }
+                                    StyledText {
+                                        text: root.isTestingMic ? (root.isProcessingMic ? "Processing..." : (root.isPlayingMic ? "Playing Test..." : (root.micTestCountdown > 0 ? "Starting in " + root.micTestCountdown + "..." : "Testing (Speak now...)"))) : "Test Microphone"
+                                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
+                                        font.pixelSize: 12
+                                    }
+                                }
+                                
+                                MouseArea {
+                                    id: testMicMa2
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (root.isTestingMic) {
+                                            if (root.isPlayingMic || root.isProcessingMic || root.micTestCountdown > 0) {
+                                                micTestProcess.running = false;
+                                                root.isTestingMic = false;
+                                            } else {
+                                                Qt.createQmlObject('import QtQuick 2.15; import DankMaterialShell 1.0; Process { command: ["bash", "-c", "touch /tmp/mic_stop"]; running: true }', testMicMa2, "stopSignalProc");
+                                            }
+                                        } else {
+                                            root.isTestingMic = true;
+                                            root.isPlayingMic = false;
+                                            root.micTestCountdown = 3;
+                                            var mic = root.videoMic;
+                                            var recordCmd = "killall -9 pw-record pw-play 2>/dev/null; rm -f /tmp/mic_test.wav /tmp/mic_stop; ";
+                                            recordCmd += "echo COUNTDOWN 3; sleep 1; echo COUNTDOWN 2; sleep 1; echo COUNTDOWN 1; sleep 1; echo RECORDING; ";
+                                            if (mic && mic !== "default" && mic !== "default_input") {
+                                                recordCmd += "pw-record --target " + mic + " /tmp/mic_test.wav & REC_PID=$!; ";
+                                            } else {
+                                                recordCmd += "pw-record /tmp/mic_test.wav & REC_PID=$!; ";
+                                            }
+                                            recordCmd += "for i in {1..50}; do if [ -f /tmp/mic_stop ]; then break; fi; sleep 0.1; done; ";
+                                            recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 6; echo PLAYING; pw-play /tmp/mic_test.wav; fi";
+                                            micTestProcess.command = ["bash", "-c", recordCmd];
+                                            micTestProcess.running = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1002,8 +1444,8 @@ PluginComponent {
                 transformOrigin: Item.BottomRight
                 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 250 } }
-                Behavior on scale { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
                 layer.enabled: true
                 layer.effect: MultiEffect {
@@ -1090,8 +1532,8 @@ PluginComponent {
 
                 scale: overlay.visible ? 1.0 : 0.95
                 opacity: overlay.visible ? 1.0 : 0.0
-                Behavior on scale { NumberAnimation { duration: 400; easing.type: Easing.OutQuart } }
-                Behavior on opacity { NumberAnimation { duration: 250 } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
 
                 Rectangle {
                     id: pillBg
@@ -1247,7 +1689,7 @@ PluginComponent {
                 }
 
                 opacity: overlay.visible ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 300 } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
             }
         }
 
@@ -1269,7 +1711,7 @@ PluginComponent {
 
         // Move scale to the root to avoid clipping artifacts
         scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.05 : 1.0)
-        Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
         Item {
             anchors.fill: parent
@@ -1300,14 +1742,14 @@ PluginComponent {
                         PropertyChanges { target: rippleObj; opacity: 1; scale: 1 }
                     }
                     transitions: Transition {
-                        NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+                        NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
                     }
                 }
 
                 Behavior on x { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
                 Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
-                Behavior on color { ColorAnimation { duration: 250 } }
-                Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
             }
         }
         DankIcon {
@@ -1349,7 +1791,7 @@ PluginComponent {
 
         width: visible ? size : 0; height: visible ? size : 0
         scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.08 : 1.0)
-        Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
         Rectangle {
             anchors.fill: parent
@@ -1357,8 +1799,8 @@ PluginComponent {
             color: isActive ? (Theme.primary || "#38bdf8") : Theme.withAlpha(Theme.primary || "#ffffff", 0.25)
             clip: true
 
-            Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
-            Behavior on color { ColorAnimation { duration: 300 } }
+            Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+            Behavior on color { ColorAnimation { duration: 150 } }
 
             // Hover glow
             Rectangle {
@@ -1366,8 +1808,8 @@ PluginComponent {
                 radius: parent.radius
                 color: isDark ? "black" : "white"
                 opacity: ma.containsMouse ? 0.1 : 0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
             }
 
             // DankRipple
@@ -1384,7 +1826,7 @@ PluginComponent {
                     PropertyChanges { target: rippleObj; opacity: 0.2; scale: 1 }
                 }
                 transitions: Transition {
-                    NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+                    NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
                 }
             }
         }
@@ -1397,7 +1839,7 @@ PluginComponent {
             anchors.centerIn: parent
             rotation: (ma.containsMouse ? 8 : 0) + (isActive ? 360 : 0)
             Behavior on rotation { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
-            Behavior on color { ColorAnimation { duration: 250 } }
+            Behavior on color { ColorAnimation { duration: 150 } }
         }
 
         MouseArea {
@@ -1436,12 +1878,12 @@ PluginComponent {
                 PropertyChanges { target: toggleRipple; opacity: 1; scale: 1 }
             }
             transitions: Transition {
-                NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+                NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
             }
         }
 
         Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuart } }
-        Behavior on opacity { NumberAnimation { duration: 400 } }
+        Behavior on opacity { NumberAnimation { duration: 150 } }
         opacity: visible ? 1 : 0
         Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -1630,7 +2072,7 @@ PluginComponent {
             border.color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Qt.rgba(0, 0, 0, 0.1)
             
             Behavior on border.width { NumberAnimation { duration: 300 } }
-            Behavior on border.color { ColorAnimation { duration: 300 } }
+            Behavior on border.color { ColorAnimation { duration: 150 } }
             
             layer.enabled: false // Shadows removed as requested
         }
@@ -1644,7 +2086,7 @@ PluginComponent {
             visible: opacity > 0
             clip: true
             enabled: !root.recPillDragging
-            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on opacity { NumberAnimation { duration: 150 } }
 
             RowLayout {
                 anchors.fill: parent
@@ -1726,7 +2168,7 @@ PluginComponent {
         opacity: recPill.recPillExpanded ? 1 : 0
         visible: opacity > 0
         clip: true
-        Behavior on opacity { NumberAnimation { duration: 300 } }
+        Behavior on opacity { NumberAnimation { duration: 150 } }
 
         RowLayout {
             anchors.fill: parent
@@ -1738,7 +2180,7 @@ PluginComponent {
                 width: 36; height: 40; radius: 10
                 color: Theme.withAlpha(Theme.primary || "#ffffff", 0.1)
                 scale: collapseMa.pressed ? 0.92 : (collapseMa.containsMouse ? 1.08 : 1.0)
-                Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
                 DankIcon {
                     name: "chevron_left"; size: 18;
@@ -1833,9 +2275,9 @@ PluginComponent {
                 scale: moveMa.pressed ? 0.92 : (moveMa.containsMouse ? 1.08 : 1.0)
                 clip: true
 
-                Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
-                Behavior on scale { NumberAnimation { duration: 300; easing.type: Easing.OutBack } }
-                Behavior on color { ColorAnimation { duration: 300 } }
+                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on color { ColorAnimation { duration: 150 } }
 
                 // Hover glow
                 Rectangle {
@@ -1843,8 +2285,8 @@ PluginComponent {
                     radius: parent.radius
                     color: recPill.isDark ? "black" : "white"
                     opacity: moveMa.containsMouse ? 0.1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 200 } }
-                    Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
                 }
 
                 // DankRipple
@@ -1861,7 +2303,7 @@ PluginComponent {
                         PropertyChanges { target: moveRippleObj; opacity: 0.2; scale: 1 }
                     }
                     transitions: Transition {
-                        NumberAnimation { properties: "opacity,scale"; duration: 400; easing.type: Easing.OutQuart }
+                        NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
                     }
                 }
 
@@ -1873,7 +2315,7 @@ PluginComponent {
                     anchors.centerIn: parent
                     rotation: (moveMa.containsMouse ? 90 : 0) + (root.recPillDragging ? 360 : 0)
                     Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
-                    Behavior on color { ColorAnimation { duration: 250 } }
+                    Behavior on color { ColorAnimation { duration: 150 } }
                 }
 
                 MouseArea {

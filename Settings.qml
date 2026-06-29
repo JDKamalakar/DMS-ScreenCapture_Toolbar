@@ -10,6 +10,92 @@ PluginSettings {
     id: root
     pluginId: "screenCaptureToolbar"
 
+
+    property var monitorList: ["default"]
+    property var micList: [{label: "Default", value: "default"}]
+    property bool isTestingMic: false
+    property bool isPlayingMic: false
+    property bool isProcessingMic: false
+    property int micTestCountdown: 0
+
+    Process {
+        command: ["bash", "-c", "hyprctl monitors -j 2>/dev/null | jq -r \".[].name\" || xrandr --listmonitors 2>/dev/null | awk \"{print \$4}\" | grep -v \"^$\""]
+        running: true
+        stdout: SplitParser {
+            onRead: function(data) {
+                var name = data.trim();
+                if (name !== "") {
+                    var exists = false;
+                    for (var i = 0; i < root.monitorList.length; i++) {
+                        if (root.monitorList[i] === name) exists = true;
+                    }
+                    if (!exists) {
+                        var l = root.monitorList.slice();
+                        l.push(name);
+                        root.monitorList = l;
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        command: ["bash", "-c", "gpu-screen-recorder --list-audio-devices 2>/dev/null | grep -v '\.monitor' | grep -v 'output' | grep -v 'default_input'"]
+        running: true
+        stdout: SplitParser {
+            onRead: function(data) {
+                var line = data.trim();
+                if (line !== "") {
+                    var parts = line.split("|");
+                    if (parts.length >= 2) {
+                        var name = parts[0];
+                        var label = parts[1];
+                        var exists = false;
+                        for (var i = 0; i < root.micList.length; i++) {
+                            if (root.micList[i].value === name) exists = true;
+                        }
+                        if (!exists) {
+                            var l = root.micList.slice();
+                            l.push({label: label, value: name});
+                            root.micList = l;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Process {
+        id: micTestProcess
+        command: []
+        running: false
+        stdout: SplitParser {
+            onRead: function(data) {
+                var line = data.trim();
+                if (line === "PLAYING") {
+                    root.isProcessingMic = false;
+                    root.isPlayingMic = true;
+                } else if (line === "PROCESSING") {
+                    root.isPlayingMic = false;
+                    root.isProcessingMic = true;
+                } else if (line === "RECORDING") {
+                    root.micTestCountdown = 0;
+                } else if (line.indexOf("COUNTDOWN") === 0) {
+                    var parts = line.split(" ");
+                    if (parts.length > 1) {
+                        root.micTestCountdown = parseInt(parts[1]);
+                    }
+                }
+            }
+        }
+        onExited: {
+            root.isTestingMic = false;
+            root.isPlayingMic = false;
+            root.isProcessingMic = false;
+            root.micTestCountdown = 0;
+        }
+    }
+
     property string defaultPath: ""
 
     Process {
@@ -70,6 +156,8 @@ PluginSettings {
                         options: [
                             {label: "Interactive (Region)", value: "interactive"},
                             {label: "Focused Screen", value: "full"},
+                            {label: "Specific Monitor", value: "monitor"},
+                            {label: "Window", value: "window"},
                             {label: "All Screens", value: "all"}
                         ]
                         defaultValue: "interactive"
@@ -257,11 +345,192 @@ PluginSettings {
                         label: "Video FPS"
                         description: "Frames per second for recording"
                         options: [
-                            {label: "60 FPS", value: "60"},
+                            {label: "24 FPS", value: "24"},
                             {label: "30 FPS", value: "30"},
-                            {label: "24 FPS", value: "24"}
+                            {label: "60 FPS", value: "60"}
                         ]
                         defaultValue: "60"
+                    }
+                }
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "showAdvancedSettings"
+                        label: "Show Advanced Settings"
+                        description: "Enable advanced codec options in the capture toolbar"
+                        defaultValue: false
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    SelectionSetting {
+                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
+                        settingKey: "videoQuality"
+                        label: "Video Quality"
+                        description: "Quality preset for video recording"
+                        options: [
+                            {label: "Medium", value: "medium"},
+                            {label: "High", value: "high"},
+                            {label: "Very High", value: "very_high"},
+                            {label: "Ultra", value: "ultra"}
+                        ]
+                        defaultValue: "medium"
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
+                    DankIcon { name: "settings_applications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    SelectionSetting {
+                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
+                        settingKey: "videoCodec"
+                        label: "Video Codec"
+                        description: "Hardware video encoder for recording"
+                        options: [
+                            {label: "Auto (Recomended)", value: "auto"},
+                            {label: "AV1", value: "av1"},
+                            {label: "AV1 (10 Bit)", value: "av1_10bit"},
+                            {label: "AV1 (HDR)", value: "av1_hdr"},
+                            {label: "H.264 SE (Not Recomended)", value: "h264"}
+                        ]
+                        defaultValue: "auto"
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
+                    DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    SelectionSetting {
+                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
+                        settingKey: "audioCodec"
+                        label: "Audio Codec"
+                        description: "Audio encoder for recording"
+                        options: [
+                            {label: "Opus (Recomended)", value: "opus"},
+                            {label: "AAC", value: "aac"}
+                        ]
+                        defaultValue: "aac"
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    visible: typeof pluginData !== "undefined" && pluginData.captureMode === "monitor"
+                    DankIcon { name: "desktop_windows"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    SelectionSetting {
+                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
+                        settingKey: "videoMonitor"
+                        label: "Target Monitor"
+                        description: "Monitor to record when in multi-monitor setup"
+                        options: root.monitorList.map(function(m) { return {label: m, value: m}; })
+                        defaultValue: "default"
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
+                    DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    SelectionSetting {
+                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
+                        settingKey: "videoMic"
+                        label: "Microphone Device"
+                        description: "Microphone to record from"
+                        options: root.micList
+                        defaultValue: "default"
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
+                    DankIcon { name: "mic_none"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    Rectangle {
+                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
+                        height: 32
+                        radius: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? 16 : 8
+                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMaSettings.containsMouse ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.1) : "transparent")
+                        border.color: Theme.primary || "#38bdf8"
+                        border.width: 1
+                        
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            DankIcon {
+                                id: testMicIconSettings
+                                name: root.isTestingMic ? (root.isProcessingMic ? "autorenew" : (root.isPlayingMic ? "volume_up" : (root.micTestCountdown > 0 ? "timer" : "stop"))) : "fiber_manual_record"
+                                size: 16
+                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
+                                
+                                transformOrigin: Item.Center
+                                
+                                RotationAnimator on rotation {
+                                    from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: root.isProcessingMic
+                                }
+                                
+                                SequentialAnimation on scale {
+                                    id: pulseAnimSettings
+                                    loops: Animation.Infinite; running: root.isTestingMic && !root.isProcessingMic
+                                    NumberAnimation { to: 1.25; duration: 500; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { to: 1.0; duration: 500; easing.type: Easing.InOutQuad }
+                                }
+                                
+                                onNameChanged: {
+                                    if (!root.isProcessingMic) rotation = 0;
+                                    if (!pulseAnimSettings.running) scale = 1.0;
+                                }
+                            }
+                            StyledText {
+                                text: root.isTestingMic ? (root.isProcessingMic ? "Processing..." : (root.isPlayingMic ? "Playing Test..." : (root.micTestCountdown > 0 ? "Starting in " + root.micTestCountdown + "..." : "Testing (Speak now...)"))) : "Test Microphone"
+                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
+                                font.pixelSize: 12
+                            }
+                        }
+                        
+                        MouseArea {
+                            id: testMicMaSettings
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                if (root.isTestingMic) {
+                                    if (root.isPlayingMic || root.isProcessingMic || root.micTestCountdown > 0) {
+                                        micTestProcess.running = false;
+                                        root.isTestingMic = false;
+                                    } else {
+                                        Qt.createQmlObject('import QtQuick 2.15; import DankMaterialShell 1.0; Process { command: ["bash", "-c", "touch /tmp/mic_stop"]; running: true }', testMicMaSettings, "stopSignalProc");
+                                    }
+                                } else {
+                                    root.isTestingMic = true;
+                                    root.isPlayingMic = false;
+                                    root.micTestCountdown = 3;
+                                    var mic = "default";
+                                    // Hack to get the current setting value if available
+                                    if (typeof pluginData !== "undefined" && pluginData.videoMic) {
+                                        mic = pluginData.videoMic;
+                                    }
+                                    var recordCmd = "killall -9 pw-record pw-play 2>/dev/null; rm -f /tmp/mic_test.wav /tmp/mic_stop; ";
+                                    recordCmd += "echo COUNTDOWN 3; sleep 1; echo COUNTDOWN 2; sleep 1; echo COUNTDOWN 1; sleep 1; echo RECORDING; ";
+                                    if (mic && mic !== "default" && mic !== "default_input") {
+                                        recordCmd += "pw-record --target " + mic + " /tmp/mic_test.wav & REC_PID=$!; ";
+                                    } else {
+                                        recordCmd += "pw-record /tmp/mic_test.wav & REC_PID=$!; ";
+                                    }
+                                    recordCmd += "for i in {1..50}; do if [ -f /tmp/mic_stop ]; then break; fi; sleep 0.1; done; ";
+                                    recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 6; echo PLAYING; pw-play /tmp/mic_test.wav; fi";
+                                    micTestProcess.command = ["bash", "-c", recordCmd];
+                                    micTestProcess.running = true;
+                                }
+                            }
+                        }
                     }
                 }
 
