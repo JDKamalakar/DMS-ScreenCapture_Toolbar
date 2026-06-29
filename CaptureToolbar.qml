@@ -33,16 +33,22 @@ PluginComponent {
     property string pipeCommand: (pluginData && pluginData.pipeCommand) || ""
     readonly property string defaultPipeCommand: "{ mkdir -p \"$HOME/Pictures/Screenshots\"; satty --filename - --output-filename \"$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png\"; }"
 
-    property var monitorList: {
-        var l = [{label: "Focused", value: "Focused"}];
-        for (var i = 0; i < Quickshell.screens.length; i++) {
-            if (Quickshell.screens[i].name) {
-                var s = Quickshell.screens[i];
-                var desc = s.description || s.model || s.name;
-                l.push({label: desc, value: s.name});
+    property var monitorList: [{label: "Focused", value: "Focused"}]
+
+    Timer {
+        running: true
+        interval: 500
+        onTriggered: {
+            var l = [{label: "Focused", value: "Focused"}];
+            for (var i = 0; i < Quickshell.screens.length; i++) {
+                if (Quickshell.screens[i].name) {
+                    var s = Quickshell.screens[i];
+                    var desc = s.description || s.model || s.name;
+                    l.push({label: desc, value: s.name});
+                }
             }
+            root.monitorList = l;
         }
-        return l;
     }
 
     property var micList: [{label: "Default", value: "default"}]
@@ -146,7 +152,7 @@ PluginComponent {
     property string videoCustomPath: (pluginData && pluginData.videoCustomPath) || ""
     property string videoFilename: (pluginData && pluginData.videoFilename) || ""
     property string videoQuality: (pluginData && pluginData.videoQuality) || "medium"
-    property string videoMonitor: (pluginData && pluginData.videoMonitor) || "Focused"
+    property string videoMonitor: (pluginData && pluginData.videoMonitor === "default") ? "Focused" : ((pluginData && pluginData.videoMonitor) || "Focused")
     property string videoMic: (pluginData && pluginData.videoMic) || "default"
 
     property bool isRecording: false
@@ -461,7 +467,7 @@ PluginComponent {
         root.videoCustomPath = pluginData.videoCustomPath || "";
         root.videoFilename = pluginData.videoFilename || "";
         root.videoQuality = pluginData.videoQuality || "medium";
-        root.videoMonitor = pluginData.videoMonitor || "Focused";
+        root.videoMonitor = (pluginData.videoMonitor === "default") ? "Focused" : (pluginData.videoMonitor || "Focused");
         root.videoMic = pluginData.videoMic || "default";
         root.showAdvancedSettings = pluginData.showAdvancedSettings !== undefined ? pluginData.showAdvancedSettings : false;
 
@@ -1297,53 +1303,7 @@ PluginComponent {
                         }
                     }
 
-                    // Monitor Selector Segment
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: monitorCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
-                        border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        visible: root.isVideoMode && root.captureMode === "monitor"
 
-                        ColumnLayout {
-                            id: monitorCol
-                            anchors.left: parent.left; anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 12; anchors.rightMargin: 12
-                            spacing: 8
-
-                            RowLayout {
-                                spacing: 12
-                                DankIcon { name: "desktop_windows"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Monitor Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
-                            }
-                            DankButtonGroup {
-                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
-                                scale: 0.95; transformOrigin: Item.Left
-                                model: {
-                                    var arr = [];
-                                    for (var i = 0; i < root.monitorList.length; i++) {
-                                        arr.push(root.monitorList[i].label);
-                                    }
-                                    return arr;
-                                }
-                                currentIndex: {
-                                    for (var i = 0; i < root.monitorList.length; i++) {
-                                        if (root.monitorList[i].value === root.videoMonitor) return i;
-                                    }
-                                    return 0;
-                                }
-                                onSelectionChanged: function(idx, sel) {
-                                    if (sel) {
-                                        root.videoMonitor = root.monitorList[idx].value;
-                                        root._save("videoMonitor", root.videoMonitor);
-                                    }
-                                }
-                            }
-                        }
-                    }
 
                     // Mic Selector Segment
                     Rectangle {

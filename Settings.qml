@@ -12,16 +12,22 @@ PluginSettings {
     pluginId: "screenCaptureToolbar"
 
 
-    property var monitorList: {
-        var l = [{label: "Focused", value: "Focused"}];
-        for (var i = 0; i < Quickshell.screens.length; i++) {
-            if (Quickshell.screens[i].name) {
-                var s = Quickshell.screens[i];
-                var desc = s.description || s.model || s.name;
-                l.push({label: desc, value: s.name});
+    property var monitorList: [{label: "Focused", value: "Focused"}]
+
+    Timer {
+        running: true
+        interval: 500
+        onTriggered: {
+            var l = [{label: "Focused", value: "Focused"}];
+            for (var i = 0; i < Quickshell.screens.length; i++) {
+                if (Quickshell.screens[i].name) {
+                    var s = Quickshell.screens[i];
+                    var desc = s.description || s.model || s.name;
+                    l.push({label: desc, value: s.name});
+                }
             }
+            root.monitorList = l;
         }
-        return l;
     }
 
     property var micList: [{label: "Default", value: "default"}]
