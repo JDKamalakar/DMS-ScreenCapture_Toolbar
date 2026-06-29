@@ -19,6 +19,7 @@ PluginComponent {
     property bool isVideoMode: false
     property bool settingsExpanded: false
     property bool delayExpanded: false
+    property bool monitorExpanded: false
 
     // -- Screenshot Settings -------------------------------------------------
     property bool showPointer: (pluginData && pluginData.showPointer != null) ? pluginData.showPointer : true
@@ -232,6 +233,7 @@ PluginComponent {
     function open() {
         root.settingsExpanded = false;
         root.delayExpanded = false;
+        root.monitorExpanded = false;
         overlay.visible = true;
     }
 
@@ -239,6 +241,7 @@ PluginComponent {
         overlay.visible = false;
         root.settingsExpanded = false;
         root.delayExpanded = false;
+        root.monitorExpanded = false;
     }
 
     function toggle() {
@@ -1567,6 +1570,96 @@ PluginComponent {
                 }
             }
 
+            // Monitor Selection Bubble
+            Rectangle {
+                id: monitorBubble
+                width: 320
+                height: root.monitorExpanded ? monitorBubbleCol.implicitHeight + 40 : 0
+                radius: 24
+                color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.1)
+                clip: true
+                
+                anchors.bottom: pillContainer.top
+                anchors.bottomMargin: 24
+                anchors.horizontalCenter: pillContainer.horizontalCenter
+                
+                opacity: root.monitorExpanded ? 1 : 0
+                scale: root.monitorExpanded ? 1 : 0.9
+                transformOrigin: Item.Bottom
+                
+                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowVerticalOffset: 8
+                    shadowBlur: 0.5
+                    shadowColor: Qt.rgba(0,0,0,0.5)
+                }
+
+                // Triangle pointer
+                Rectangle {
+                    width: 16; height: 16
+                    color: monitorBubble.color
+                    rotation: 45
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: -8
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    border.width: 1; border.color: monitorBubble.border.color
+                    z: -1
+                }
+
+                ColumnLayout {
+                    id: monitorBubbleCol
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 20
+                    spacing: 12
+                    
+                    RowLayout {
+                        spacing: 8
+                        DankIcon { name: "desktop_windows"; size: 16; color: Theme.surfaceText }
+                        StyledText { text: "Select Monitor"; font.bold: true; font.pixelSize: 15; color: Theme.surfaceText; Layout.fillWidth: true }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: monitorBubbleOptionsCol.implicitHeight
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        clip: true
+                        
+                        Column {
+                            id: monitorBubbleOptionsCol
+                            width: parent.width
+                            
+                            Repeater {
+                                model: root.monitorList
+                                delegate: SettingToggle {
+                                    label: modelData
+                                    iconName: "monitor"
+                                    active: root.videoMonitor === modelData
+                                    isOption: true
+                                    isLast: index === root.monitorList.length - 1
+                                    onToggled: {
+                                        root.videoMonitor = modelData;
+                                        root._save("videoMonitor", root.videoMonitor);
+                                        root.monitorExpanded = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Pill Container
             Item {
                 id: pillContainer
@@ -1642,9 +1735,21 @@ PluginComponent {
                         }
                         ToolbarBtn {
                             iconName: "monitor";
-                            active: root.captureMode === "full"
+                            active: root.captureMode === "full" || root.captureMode === "monitor"
                             tooltipText: root.isVideoMode ? "Record Monitor" : "Focused Screen"
-                            onClicked: { root.captureMode = "full"; }
+                            onClicked: { 
+                                if (root.isVideoMode) {
+                                    root.captureMode = "monitor";
+                                    root.monitorExpanded = !root.monitorExpanded;
+                                    root.settingsExpanded = false;
+                                    root.delayExpanded = false;
+                                } else {
+                                    root.captureMode = "full";
+                                    root.monitorExpanded = false;
+                                    root.settingsExpanded = false;
+                                    root.delayExpanded = false;
+                                }
+                            }
                         }
                         ToolbarBtn {
                             isLast: true
@@ -1672,6 +1777,7 @@ PluginComponent {
                             onClicked: {
                                 root.delayExpanded = !root.delayExpanded;
                                 root.settingsExpanded = false;
+                                root.monitorExpanded = false;
                             }
                             
                             // Indicator Badge for Delay
@@ -1693,7 +1799,7 @@ PluginComponent {
                             }
                         }
 
-                        ToolbarBtn { isFirst: !delayBtn.visible; id: settingsBtn; iconName: "settings"; active: root.settingsExpanded; onClicked: { root.settingsExpanded = !root.settingsExpanded; root.delayExpanded = false; } }
+                        ToolbarBtn { isFirst: !delayBtn.visible; id: settingsBtn; iconName: "settings"; active: root.settingsExpanded; onClicked: { root.settingsExpanded = !root.settingsExpanded; root.delayExpanded = false; root.monitorExpanded = false; } }
                         ToolbarBtn { isLast: true; iconName: "close"; hoverColor: "#FF4444"; animateRotate: true; onClicked: root.close() }
                     }
 
