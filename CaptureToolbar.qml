@@ -672,7 +672,7 @@ PluginComponent {
                 "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
                 "fi";
         } else if (root.captureMode === "monitor") {
-            let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "portal";
+            let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "\"$MONITOR\"";
             scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w " + mon + gsrSuffix;
         } else if (root.captureMode === "all") {
             scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
@@ -1691,7 +1691,7 @@ PluginComponent {
                             iconName: "screenshot_region"
                             active: root.captureMode === "interactive"
                             tooltipText: "Interactive Region"
-                            onClicked: { root.captureMode = "interactive"; }
+                            onClicked: { root.captureMode = "interactive"; root._save("captureMode", "interactive"); }
 
                         }
                         ToolbarBtn {
@@ -1701,11 +1701,13 @@ PluginComponent {
                             onClicked: { 
                                 if (root.isVideoMode) {
                                     root.captureMode = "monitor";
+                                    root._save("captureMode", "monitor");
                                     root.monitorExpanded = !root.monitorExpanded;
                                     root.settingsExpanded = false;
                                     root.delayExpanded = false;
                                 } else {
                                     root.captureMode = "full";
+                                    root._save("captureMode", "full");
                                     root.monitorExpanded = false;
                                     root.settingsExpanded = false;
                                     root.delayExpanded = false;
@@ -1717,7 +1719,7 @@ PluginComponent {
                             iconName: "monitor_weight";
                             active: root.captureMode === "all"
                             tooltipText: root.isVideoMode ? "Record All" : "All Screens"
-                            onClicked: { root.captureMode = "all"; }
+                            onClicked: { root.captureMode = "all"; root._save("captureMode", "all"); }
                         }
                     }
 
