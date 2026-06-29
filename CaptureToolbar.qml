@@ -648,7 +648,7 @@ PluginComponent {
         if (root.recordMic) {
             prepends.push("MIC_AUDIO=$(pactl get-default-source 2>/dev/null); if [ -z \"$MIC_AUDIO\" ]; then MIC_AUDIO=\"default_input\"; fi");
         }
-        prepends.push("MONITOR=\"\"; if command -v niri >/dev/null 2>&1; then MONITOR=$(niri msg -j outputs 2>/dev/null | jq -r 'keys[0]'); elif command -v hyprctl >/dev/null 2>&1; then MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name'); fi; if [ -z \"$MONITOR\" ] || [ \"$MONITOR\" = \"null\" ]; then MONITOR=\"portal\"; fi");
+        prepends.push("MONITOR=\"\"; if command -v niri >/dev/null 2>&1; then MONITOR=$(niri msg -j focused-output 2>/dev/null | jq -r '.name'); elif command -v hyprctl >/dev/null 2>&1; then MONITOR=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name'); fi; if [ -z \"$MONITOR\" ] || [ \"$MONITOR\" = \"null\" ]; then MONITOR=\"portal\"; fi");
 
         let gsrSuffix = " -c " + root.videoFormat;
         if (root.videoQuality !== "" && root.videoQuality !== "default")
