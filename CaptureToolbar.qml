@@ -918,7 +918,10 @@ PluginComponent {
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
-                    anchors.horizontalCenter: settingsBtn.horizontalCenter
+                    x: {
+                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
+                        return settingsBubble.mapFromItem(settingsBtn, settingsBtn.width / 2, 0).x - width / 2;
+                    }
                     border.width: 1; border.color: settingsBubble.border.color
                     z: -1
                 }
@@ -1485,7 +1488,10 @@ PluginComponent {
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
-                    anchors.horizontalCenter: delayBtn.horizontalCenter
+                    x: {
+                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
+                        return delayBubble.mapFromItem(delayBtn, delayBtn.width / 2, 0).x - width / 2;
+                    }
                     border.width: 1; border.color: delayBubble.border.color
                     z: -1
                 }
@@ -1580,7 +1586,10 @@ PluginComponent {
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
-                    anchors.horizontalCenter: monitorBtn.horizontalCenter
+                    x: {
+                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
+                        return monitorBubble.mapFromItem(monitorBtn, monitorBtn.width / 2, 0).x - width / 2;
+                    }
                     border.width: 1; border.color: monitorBubble.border.color
                     z: -1
                 }
