@@ -66,9 +66,33 @@ PluginComponent {
                 if (line !== "") {
                     var parts = line.split("|");
                     if (parts.length >= 2) {
-                        var name = parts[0].trim();
-                        var label = parts[1] ? parts[1].trim() : name;
-                        
+                        var name = parts[0];
+                        var label = parts[1];
+                        if (typeof AudioService !== "undefined" && AudioService) {
+                            var found = false;
+                            if (AudioService.sources) {
+                                for (var k = 0; k < AudioService.sources.length; k++) {
+                                    if (AudioService.sources[k].name === name || AudioService.sources[k].name === name + ".monitor" || name.indexOf(AudioService.sources[k].name) !== -1) {
+                                        if (AudioService.sources[k].description) {
+                                            label = AudioService.sources[k].description;
+                                            found = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!found && AudioService.sinks) {
+                                for (var k = 0; k < AudioService.sinks.length; k++) {
+                                    if (AudioService.sinks[k].name === name || AudioService.sinks[k].name + ".monitor" === name || name.indexOf(AudioService.sinks[k].name) !== -1) {
+                                        if (AudioService.sinks[k].description) {
+                                            label = AudioService.sinks[k].description;
+                                            found = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         var exists = false;
                         for (var i = 0; i < root.micList.length; i++) {
                             if (root.micList[i].value === name) exists = true;
@@ -476,7 +500,7 @@ PluginComponent {
         }
 
         // Apply delay for screenshot modes
-        let useDelay = root.delaySeconds > 0;
+        let useDelay = !root.isVideoMode && root.delaySeconds > 0;
         
         if (useDelay) {
             root.close(); // Close immediately so it's not in the shot
@@ -865,14 +889,13 @@ PluginComponent {
                 border.color: Qt.rgba(1, 1, 1, 0.1)
                 clip: true
 
-                // Position strictly above the right side of the pill
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.right: pillContainer.right
+                anchors.horizontalCenter: pillContainer.horizontalCenter
 
                 opacity: root.settingsExpanded ? 1 : 0
                 scale: root.settingsExpanded ? 1 : 0.9
-                transformOrigin: Item.BottomRight
+                transformOrigin: Item.Bottom
 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
                 Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
@@ -1435,12 +1458,11 @@ PluginComponent {
                 
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.right: pillContainer.right
-                anchors.rightMargin: 0 // Flush right to match settingsBubble
+                anchors.horizontalCenter: pillContainer.horizontalCenter
                 
                 opacity: root.delayExpanded ? 1 : 0
                 scale: root.delayExpanded ? 1 : 0.9
-                transformOrigin: Item.BottomRight
+                transformOrigin: Item.Bottom
                 
                 Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
                 Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
@@ -1551,17 +1573,7 @@ PluginComponent {
                     shadowColor: Qt.rgba(0,0,0,0.5)
                 }
 
-                // Triangle pointer
-                Rectangle {
-                    width: 16; height: 16
-                    color: monitorBubble.color
-                    rotation: 45
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: -8
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    border.width: 1; border.color: monitorBubble.border.color
-                    z: -1
-                }
+
 
                 ColumnLayout {
                     id: monitorBubbleCol
