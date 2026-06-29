@@ -137,15 +137,21 @@ PluginSettings {
         }
     }
 
-    // Wrap everything in a Column because PluginSettings is a Flickable 
-    // and needs a single content item or manual layout.
-    Column {
+    // Wrap everything in a Row for Dual Panel Layout
+    Row {
         width: parent.width
         spacing: Theme.spacingM
 
+        Column {
+            width: (typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true) ? (parent.width - Theme.spacingM) / 2 : parent.width
+            spacing: Theme.spacingM
+            
+            Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.InOutQuad } }
+
+
+
         // --- Screenshot Settings ---
         Rectangle {
-            z: 100
             width: parent.width
             height: captureGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -173,7 +179,6 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
-                    z: 1000
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "camera"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -193,7 +198,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 999
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "monitor_weight"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -207,9 +211,9 @@ PluginSettings {
             }
         }
 
+
         // --- Output Settings ---
         Rectangle {
-            z: 99
             width: parent.width
             height: outputGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -237,7 +241,6 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
-                    z: 998
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "image"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -255,7 +258,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 997
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -268,7 +270,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 996
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -281,7 +282,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 995
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "timer"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -301,9 +301,9 @@ PluginSettings {
             }
         }
 
+
         // --- Video Settings ---
         Rectangle {
-            z: 98
             width: parent.width
             height: videoGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -331,7 +331,6 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
-                    z: 994
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "videocam"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -349,7 +348,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 993
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -362,7 +360,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 992
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -375,7 +372,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 991
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "speed"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -392,7 +388,6 @@ PluginSettings {
                     }
                 }
                 Row {
-                    z: 990
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -403,9 +398,177 @@ PluginSettings {
                         defaultValue: false
                     }
                 }
+            }
+        }
+
+
+        // --- Interface ---
+        Rectangle {
+            width: parent.width
+            height: interfaceGroup.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+
+            function loadValue() {
+                if (!interfaceGroup) return;
+                for (var i = 0; i < interfaceGroup.children.length; i++) {
+                    var row = interfaceGroup.children[i];
+                    if (row && row.children) {
+                        for (var j = 0; j < row.children.length; j++) {
+                            if (row.children[j].loadValue) row.children[j].loadValue();
+                        }
+                    }
+                }
+            }
+
+            Column {
+                id: interfaceGroup
+                anchors.fill: parent
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
 
                 Row {
-                    z: 989
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "mouse"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "showPointer"
+                        label: "Show Pointer"
+                        description: "Include mouse pointer in the screenshot"
+                        defaultValue: true
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "notifications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "showNotify"
+                        label: "Show Notification"
+                        description: "Show system notification after capture"
+                        defaultValue: true
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "pill"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "showRecPill"
+                        label: "Show Recording Pill"
+                        description: "Show the status pill at the top during recording"
+                        defaultValue: true
+                    }
+                }
+            }
+        }
+
+
+        // --- Styles ---
+        Rectangle {
+            width: parent.width
+            height: interfaceStylesGroup.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+
+            function loadValue() {
+                if (!interfaceStylesGroup) return;
+                for (var i = 0; i < interfaceStylesGroup.children.length; i++) {
+                    var row = interfaceStylesGroup.children[i];
+                    if (row && row.children) {
+                        for (var j = 0; j < row.children.length; j++) {
+                            if (row.children[j].loadValue) row.children[j].loadValue();
+                        }
+                    }
+                }
+            }
+
+            Column {
+                id: interfaceStylesGroup
+                anchors.fill: parent
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "opacity"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    Column {
+                        width: parent.width - 22 - Theme.spacingM
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Toolbar Transparency"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                        StyledText { text: "Adjust the background opacity of the toolbar and recording pill"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    Column {
+                        width: parent.width
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Toolbar Background Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
+                        StringSetting { width: parent.width; settingKey: "toolbarOpacity"; label: ""; description: ""; placeholder: "0.85"; defaultValue: "0.85" }
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    Column {
+                        width: parent.width
+                        spacing: Theme.spacingXS
+                        StyledText { text: "Recording Pill Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
+                        StringSetting { width: parent.width; settingKey: "pillOpacity"; label: ""; description: ""; placeholder: "0.92"; defaultValue: "0.92" }
+                    }
+                }
+            }
+        }
+        }
+
+        Column {
+            width: (typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true) ? (parent.width - Theme.spacingM) / 2 : 0
+            spacing: Theme.spacingM
+            visible: width > 0
+            clip: true
+            
+            Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.InOutQuad } }
+
+        // --- Advanced Video Settings ---
+        Rectangle {
+            width: parent.width
+            height: advVideoGroup.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+
+            function loadValue() {
+                if (!advVideoGroup) return;
+                for (var i = 0; i < advVideoGroup.children.length; i++) {
+                    var row = advVideoGroup.children[i];
+                    if (row && row.children) {
+                        for (var j = 0; j < row.children.length; j++) {
+                            if (row.children[j].loadValue) row.children[j].loadValue();
+                        }
+                    }
+                }
+            }
+
+            Column {
+                id: advVideoGroup
+                anchors.fill: parent
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
+
+
+                Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
@@ -424,9 +587,7 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 988
                     width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
                     DankIcon { name: "settings_applications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
@@ -445,9 +606,7 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 987
                     width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
                     DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSetting {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
@@ -463,7 +622,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 986
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.captureMode === "monitor"
                     DankIcon { name: "desktop_windows"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -478,7 +636,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 985
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -493,7 +650,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 984
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
                     DankIcon { name: "mic_none"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
@@ -581,7 +737,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 983
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -594,7 +749,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 982
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -608,9 +762,9 @@ PluginSettings {
             }
         }
 
+
         // --- Editor & Shortcuts ---
         Rectangle {
-            z: 97
             width: parent.width
             height: actionsGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
@@ -638,7 +792,6 @@ PluginSettings {
                 spacing: Theme.spacingM
 
                 Row {
-                    z: 981
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "save"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -651,7 +804,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 980
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -664,7 +816,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 979
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "output"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -677,7 +828,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 978
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "keyboard"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -690,7 +840,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 977
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "swap_horiz"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
@@ -703,7 +852,6 @@ PluginSettings {
                 }
 
                 Row {
-                    z: 976
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "input"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     Column {
@@ -716,203 +864,6 @@ PluginSettings {
                 }
             }
         }
-
-        // --- Interface ---
-        Rectangle {
-            z: 96
-            width: parent.width
-            height: interfaceGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!interfaceGroup) return;
-                for (var i = 0; i < interfaceGroup.children.length; i++) {
-                    var row = interfaceGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                id: interfaceGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    z: 975
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "mouse"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showPointer"
-                        label: "Show Pointer"
-                        description: "Include mouse pointer in the screenshot"
-                        defaultValue: true
-                    }
-                }
-
-                Row {
-                    z: 974
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "notifications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showNotify"
-                        label: "Show Notification"
-                        description: "Show system notification after capture"
-                        defaultValue: true
-                    }
-                }
-
-                Row {
-                    z: 973
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "pill"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showRecPill"
-                        label: "Show Recording Pill"
-                        description: "Show the status pill at the top during recording"
-                        defaultValue: true
-                    }
-                }
-            }
-        }
-
-        // --- Styles ---
-        Rectangle {
-            z: 95
-            width: parent.width
-            height: interfaceStylesGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!interfaceStylesGroup) return;
-                for (var i = 0; i < interfaceStylesGroup.children.length; i++) {
-                    var row = interfaceStylesGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                id: interfaceStylesGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    z: 972
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "opacity"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Toolbar Transparency"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Adjust the background opacity of the toolbar and recording pill"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                    }
-                }
-
-                Row {
-                    z: 971
-                    width: parent.width; spacing: Theme.spacingM
-                    Column {
-                        width: parent.width
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Toolbar Background Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
-                        StringSetting { width: parent.width; settingKey: "toolbarOpacity"; label: ""; description: ""; placeholder: "0.85"; defaultValue: "0.85" }
-                    }
-                }
-
-                Row {
-                    z: 970
-                    width: parent.width; spacing: Theme.spacingM
-                    Column {
-                        width: parent.width
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Recording Pill Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
-                        StringSetting { width: parent.width; settingKey: "pillOpacity"; label: ""; description: ""; placeholder: "0.92"; defaultValue: "0.92" }
-                    }
-                }
-            }
-        }
-
-        // --- Commands & Shortcuts ---
-        Rectangle {
-            z: 94
-            width: parent.width
-            height: commandsGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            Column {
-                id: commandsGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    z: 969
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    StyledText { text: "Commands & Shortcuts"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
-                }
-
-                StyledText {
-                    width: parent.width
-                    text: "You can open, close, or toggle the screen capture toolbar using the dms CLI:"
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceVariantText
-                    wrapMode: Text.WordWrap
-                }
-
-                CopyBox {
-                    label: "Toggle Toolbar Command"
-                    text: "dms ipc call screenCaptureToolbar toggle"
-                }
-
-                CopyBox {
-                    label: "Open Toolbar Command"
-                    text: "dms ipc call screenCaptureToolbar open"
-                }
-
-                CopyBox {
-                    label: "Close Toolbar Command"
-                    text: "dms ipc call screenCaptureToolbar close"
-                }
-
-                StyledText {
-                    width: parent.width
-                    text: "To trigger the screen capture toolbar using Print Screen, add this spawn command to your Niri configuration binds:"
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.primary
-                    font.italic: true
-                    wrapMode: Text.WordWrap
-                }
-
-                CopyBox {
-                    label: "Niri Bind Configuration"
-                    text: "Print { spawn \"dms\" \"ipc\" \"call\" \"screenCaptureToolbar\" \"toggle\"; }"
-                }
-            }
         }
     }
 }
