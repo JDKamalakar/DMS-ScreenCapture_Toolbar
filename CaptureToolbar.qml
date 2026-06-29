@@ -254,6 +254,13 @@ PluginComponent {
         }
     }
 
+    function getMonitorLabel(val) {
+        for (let i = 0; i < root.monitorList.length; i++) {
+            if (root.monitorList[i].value === val) return root.monitorList[i].label;
+        }
+        return val;
+    }
+
     Connections {
         target: root.pluginService
         function onGlobalVarChanged(plugin, key) {
@@ -669,7 +676,7 @@ PluginComponent {
             scriptBody =
                 "cancel_rec() { command -v dms >/dev/null 2>&1 && ( dms ipc call screenCaptureToolbar cancelRecording 2>/dev/null || dms ipc screenCaptureToolbar cancelRecording 2>/dev/null ); }; " +
                 "start_rec() { command -v dms >/dev/null 2>&1 && ( dms ipc call screenCaptureToolbar recordingStarted 2>/dev/null || dms ipc screenCaptureToolbar recordingStarted 2>/dev/null ); }; " +
-                "sleep 0.2; mkdir -p \"" + dir + "\"; " +
+                "mkdir -p \"" + dir + "\"; " +
                 "if command -v slurp >/dev/null 2>&1; then " +
                 "REGION=$(slurp -f '%wx%h+%x+%y') || { cancel_rec; exit 1; }; " +
                 "[ -z \"$REGION\" ] && { cancel_rec; exit 1; }; " +
@@ -679,9 +686,9 @@ PluginComponent {
                 "fi";
         } else if (root.captureMode === "monitor") {
             let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "\"$MONITOR\"";
-            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w " + mon + gsrSuffix;
+            scriptBody = "mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w " + mon + gsrSuffix;
         } else if (root.captureMode === "all") {
-            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
+            scriptBody = "mkdir -p \"" + dir + "\"; " +
                 "HAS_PORTAL=\"\"; " +
                 "if command -v dbus-send >/dev/null 2>&1; then " +
                 "dbus-send --dest=org.freedesktop.portal.Desktop --print-reply /org/freedesktop/portal/desktop org.freedesktop.DBus.Introspectable.Introspect 2>/dev/null | grep -q \"org.freedesktop.portal.ScreenCast\" && HAS_PORTAL=\"1\"; " +
@@ -697,10 +704,10 @@ PluginComponent {
                 "exec gpu-screen-recorder -w screen" + gsrSuffix + "; " +
                 "fi";
         } else {
-            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
+            scriptBody = "mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
         }
 
-        let finalCmd = prelude !== "" ? prelude + "; " + scriptBody : scriptBody;
+        let finalCmd = "sleep 0.3; " + (prelude !== "" ? prelude + "; " + scriptBody : scriptBody);
 
         let deferRecordingUi = root.captureMode === "interactive";
         if (!deferRecordingUi) {
@@ -1703,7 +1710,7 @@ PluginComponent {
                         ToolbarBtn {
                             iconName: "monitor";
                             active: root.captureMode === "monitor"
-                            tooltipText: root.isVideoMode ? "Record Monitor" : "Capture Monitor"
+                            tooltipText: (root.isVideoMode ? "Record Monitor - " : "Capture Monitor - ") + root.getMonitorLabel(root.videoMonitor)
                             onClicked: { 
                                 root.captureMode = "monitor";
                                 root._save("captureMode", "monitor");
