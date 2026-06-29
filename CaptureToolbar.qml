@@ -673,7 +673,7 @@ PluginComponent {
                 "fi";
         } else if (root.captureMode === "monitor") {
             let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "portal";
-            execCmd = "sleep " + root.delaySeconds + "; " + prepends.join(" ") + " gpu-screen-recorder -w " + mon + gsrSuffix + " -o " + filename;
+            scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w " + mon + gsrSuffix;
         } else if (root.captureMode === "all") {
             scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
                 "HAS_PORTAL=\"\"; " +
