@@ -532,7 +532,13 @@ PluginComponent {
         let dir = root.screenshotDir();
         let dmsStr = "dms screenshot";
         if (root.captureMode === "full") dmsStr += " full";
-        else if (root.captureMode === "monitor") dmsStr += " monitor";
+        else if (root.captureMode === "monitor") {
+            if (root.videoMonitor === "Focused" || root.videoMonitor === "default") {
+                dmsStr += " full";
+            } else {
+                dmsStr += " output -o " + root.videoMonitor;
+            }
+        }
         else if (root.captureMode === "all") dmsStr += " all";
         else if (root.captureMode === "window") dmsStr += " window";
 
