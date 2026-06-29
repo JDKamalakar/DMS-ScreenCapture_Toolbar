@@ -12,33 +12,21 @@ PluginSettings {
     pluginId: "screenCaptureToolbar"
 
 
-    property var monitorList: ["default"]
+    property var monitorList: {
+        var l = ["default"];
+        for (var i = 0; i < Quickshell.screens.length; i++) {
+            if (Quickshell.screens[i].name) {
+                l.push(Quickshell.screens[i].name);
+            }
+        }
+        return l;
+    }
+
     property var micList: [{label: "Default", value: "default"}]
     property bool isTestingMic: false
     property bool isPlayingMic: false
     property bool isProcessingMic: false
     property int micTestCountdown: 0
-
-    Process {
-        command: ["bash", "-c", "hyprctl monitors -j 2>/dev/null | jq -r \".[].name\" || xrandr --listmonitors 2>/dev/null | awk \"{print \$4}\" | grep -v \"^$\""]
-        running: true
-        stdout: SplitParser {
-            onRead: function(data) {
-                var name = data.trim();
-                if (name !== "") {
-                    var exists = false;
-                    for (var i = 0; i < root.monitorList.length; i++) {
-                        if (root.monitorList[i] === name) exists = true;
-                    }
-                    if (!exists) {
-                        var l = root.monitorList.slice();
-                        l.push(name);
-                        root.monitorList = l;
-                    }
-                }
-            }
-        }
-    }
 
     Process {
         command: ["bash", "-c", "gpu-screen-recorder --list-audio-devices 2>/dev/null | grep -v '\.monitor' | grep -v 'output' | grep -v 'default_input'"]
