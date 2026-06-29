@@ -184,7 +184,6 @@ PluginComponent {
 
     // -- IPC ------------------------------------------------------------------
     IpcHandler {
-        target: "screenCaptureToolbar"
 
         function toggle(): string {
             root.toggle();
@@ -201,7 +200,6 @@ PluginComponent {
             return "closed";
         }
 
-        /** Reset recording UI if interactive video setup fails (e.g. slurp cancelled). Called from bash. */
         function cancelRecording(): string {
             root.isRecording = false;
             root.isPaused = false;
@@ -211,7 +209,6 @@ PluginComponent {
             return "cancelled";
         }
 
-        /** Show pill + timer only after region selection / portal begins recording (interactive video). Called from bash. */
         function recordingStarted(): string {
             root.isRecording = true;
             root.isPaused = false;
@@ -222,6 +219,8 @@ PluginComponent {
             }
             return "started";
         }
+
+        target: "screenCaptureToolbar"
     }
 
 
