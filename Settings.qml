@@ -11,6 +11,8 @@ PluginSettings {
     id: root
     pluginId: "screenCaptureToolbar"
 
+    property bool showAdv: false
+
 
     property var monitorList: ["default"]
     property var micList: [{label: "Default", value: "default"}]
@@ -143,7 +145,7 @@ PluginSettings {
         spacing: Theme.spacingM
 
         Column {
-            width: (typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true) ? (parent.width - Theme.spacingM) / 2 : parent.width
+            width: root.showAdv ? (parent.width - Theme.spacingM) / 2 : parent.width
             spacing: Theme.spacingM
             
             Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.InOutQuad } }
@@ -392,10 +394,13 @@ PluginSettings {
                     DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
                         width: parent.width - 22 - Theme.spacingM
+                        id: advSettingsToggle
                         settingKey: "showAdvancedSettings"
                         label: "Show Advanced Settings"
                         description: "Enable advanced codec options in the capture toolbar"
                         defaultValue: false
+                        onValueChanged: root.showAdv = value
+                        Component.onCompleted: root.showAdv = value
                     }
                 }
             }
@@ -532,7 +537,7 @@ PluginSettings {
         }
 
         Column {
-            width: (typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true) ? (parent.width - Theme.spacingM) / 2 : 0
+            width: root.showAdv ? (parent.width - Theme.spacingM) / 2 : 0
             spacing: Theme.spacingM
             visible: width > 0
             clip: true
