@@ -20,6 +20,10 @@ PluginComponent {
     property bool settingsExpanded: false
     property bool delayExpanded: false
     property bool monitorExpanded: false
+    property int monitorSelectedIndex: 0
+    property int delaySelectedIndex: 0
+    property bool enableController: (pluginData && pluginData.enableController !== undefined) ? pluginData.enableController : false
+    property bool controllerConnected: false
 
     // -- Screenshot Settings -------------------------------------------------
     property bool showPointer: (pluginData && pluginData.showPointer != null) ? pluginData.showPointer : true
@@ -222,6 +226,156 @@ PluginComponent {
             }
             return "started";
         }
+
+        function controllerToggle(): string {
+            if (!root.enableController) return "controller disabled";
+            if (overlay.visible) {
+                root.close();
+                return "closed";
+            } else {
+                root.captureMode = "monitor";
+                root.videoMonitor = "Focused";
+                root._save("captureMode", "monitor");
+                root._save("videoMonitor", "Focused");
+                root.open();
+                return "opened";
+            }
+        }
+
+        function controllerConnectionChange(connectedStr): string {
+            root.controllerConnected = (connectedStr === "true");
+            return "status updated";
+        }
+
+        function controllerActionA(): string {
+            if (!root.enableController) return "controller disabled";
+            if (!overlay.visible) return "toolbar not open";
+            
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                Quickshell.execDetached(["wtype", "-k", "Return"]);
+                return "A executed (selected popup item)";
+            }
+            
+            root.performCapture(false);
+            return "A executed";
+        }
+
+        function controllerActionB(): string {
+            if (!root.enableController) return "controller disabled";
+            if (!overlay.visible) return "toolbar not open";
+            if (root.settingsExpanded) { root.settingsExpanded = false; return "settings closed"; }
+            if (root.delayExpanded) { root.delayExpanded = false; return "delay closed"; }
+            if (root.monitorExpanded) { root.monitorExpanded = false; return "monitor closed"; }
+            root.close();
+            return "B executed";
+        }
+
+        function controllerActionHOME(): string {
+            if (!root.enableController) return "controller disabled";
+            if (root.isRecording) {
+                root.stopRecording();
+                return "HOME executed (stopped recording)";
+            }
+            return "HOME executed";
+        }
+
+        function controllerActionUP(): string {
+            if (!root.enableController || !overlay.visible) return "";
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                if (root.monitorExpanded) {
+                    root.monitorSelectedIndex = Math.max(0, root.monitorSelectedIndex - 1);
+                } else if (root.delayExpanded) {
+                    root.delaySelectedIndex = Math.max(0, root.delaySelectedIndex - 1);
+                } else {
+                    Quickshell.execDetached(["wtype", "-M", "shift", "-k", "Tab", "-m", "shift"]);
+                }
+                return "UP navigated";
+            }
+            root.settingsExpanded = false;
+            root.delayExpanded = false;
+            root.monitorExpanded = !root.monitorExpanded;
+            root.monitorSelectedIndex = 0;
+            return "UP executed";
+        }
+
+        function controllerActionDOWN(): string {
+            if (!root.enableController || !overlay.visible) return "";
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                if (root.monitorExpanded) {
+                    root.monitorSelectedIndex = Math.min(root.monitorList.length - 1, root.monitorSelectedIndex + 1);
+                } else if (root.delayExpanded) {
+                    root.delaySelectedIndex = Math.min(3, root.delaySelectedIndex + 1); // 4 items (0 to 3)
+                } else {
+                    Quickshell.execDetached(["wtype", "-k", "Tab"]);
+                }
+                return "DOWN navigated";
+            }
+            root.monitorExpanded = false;
+            root.delayExpanded = false;
+            root.settingsExpanded = !root.settingsExpanded;
+            return "DOWN executed";
+        }
+
+        function controllerActionRIGHT(): string {
+            if (!root.enableController || !overlay.visible) return "";
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                Quickshell.execDetached(["wtype", "-k", "Right"]);
+                return "RIGHT navigated";
+            }
+            if (!root.isVideoMode) {
+                root.settingsExpanded = false;
+                root.monitorExpanded = false;
+                root.delayExpanded = !root.delayExpanded;
+            }
+            return "RIGHT executed";
+        }
+
+        function controllerActionLEFT(): string {
+            if (!root.enableController || !overlay.visible) return "";
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                Quickshell.execDetached(["wtype", "-k", "Left"]);
+                return "LEFT navigated";
+            }
+            return "LEFT executed";
+        }
+
+        function controllerActionRT(): string {
+            if (!root.enableController) return "controller disabled";
+            if (!overlay.visible) return "toolbar not open";
+            root.isVideoMode = true;
+            return "RT executed";
+        }
+
+        function controllerActionLT(): string {
+            if (!root.enableController) return "controller disabled";
+            if (!overlay.visible) return "toolbar not open";
+            root.isVideoMode = false;
+            return "LT executed";
+        }
+
+        function controllerActionRB(): string {
+            if (!root.enableController) return "controller disabled";
+            if (!overlay.visible) return "toolbar not open";
+            let modes = ["interactive", "monitor", "all"];
+            let idx = modes.indexOf(root.captureMode);
+            if (idx === -1) idx = 0;
+            idx = (idx + 1) % modes.length;
+            root.captureMode = modes[idx];
+            root._save("captureMode", root.captureMode);
+            return "RB executed";
+        }
+
+        function controllerActionLB(): string {
+            if (!root.enableController) return "controller disabled";
+            if (!overlay.visible) return "toolbar not open";
+            let modes = ["interactive", "monitor", "all"];
+            let idx = modes.indexOf(root.captureMode);
+            if (idx === -1) idx = 0;
+            idx = (idx - 1 + modes.length) % modes.length;
+            root.captureMode = modes[idx];
+            root._save("captureMode", root.captureMode);
+            return "LB executed";
+        }
     }
 
 
@@ -241,11 +395,15 @@ PluginComponent {
     }
 
     function toggle() {
-        if (overlay.visible) root.close();
-        else root.open();
+        if (overlay.visible) close();
+        else open();
     }
 
-    
+    Process {
+        id: gamepadProcess
+        command: ["python3", "/home/JD/Downloads/Projects/DMS-ScreenCapture_Toolbar/gamepad_listener.py"]
+        running: root.enableController
+    }
 
     function _save(key, value) {
         if (root.pluginService) {
@@ -276,6 +434,7 @@ PluginComponent {
                 else if (key === "showPointer") root.showPointer = value;
                 else if (key === "showNotify") root.showNotify = value;
                 else if (key === "showRecPill") root.showRecPill = value;
+                else if (key === "enableController") root.enableController = value;
                 else if (key === "captureMode") root.captureMode = value;
                 else if (key === "format") root.format = value;
                 else if (key === "quality") root.quality = value;
@@ -479,6 +638,7 @@ PluginComponent {
         root.showAdvancedSettings = pluginData.showAdvancedSettings !== undefined ? pluginData.showAdvancedSettings : false;
 
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
+        root.enableController = pluginData.enableController !== undefined ? pluginData.enableController : false;
         root.showNotify = pluginData.showNotify !== undefined ? pluginData.showNotify : true;
         root.enableEditorShortcut = pluginData.enableEditorShortcut !== undefined ? pluginData.enableEditorShortcut : true;
         root.swapCaptureKeys = pluginData.swapCaptureKeys !== undefined ? pluginData.swapCaptureKeys : false;
@@ -812,6 +972,23 @@ PluginComponent {
                 } else if (event.key === Qt.Key_Escape) {
                     root.close();
                     event.accepted = true;
+                } else if (root.enableController) {
+                    if (event.key === Qt.Key_Right) {
+                        root.isVideoMode = true;
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Left) {
+                        root.isVideoMode = false;
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
+                        let modes = ["interactive", "monitor", "all"];
+                        let idx = modes.indexOf(root.captureMode);
+                        if (idx === -1) idx = 0;
+                        if (event.key === Qt.Key_Down) idx = (idx + 1) % modes.length;
+                        else idx = (idx - 1 + modes.length) % modes.length;
+                        root.captureMode = modes[idx];
+                        root._save("captureMode", root.captureMode);
+                        event.accepted = true;
+                    }
                 }
             }
         }
@@ -894,6 +1071,7 @@ PluginComponent {
                 anchors.bottomMargin: 24
                 anchors.right: pillContainer.right
 
+                visible: opacity > 0.01
                 opacity: root.settingsExpanded ? 1 : 0
                 scale: root.settingsExpanded ? 1 : 0.9
                 transformOrigin: Item.BottomRight
@@ -1035,27 +1213,50 @@ PluginComponent {
                                 DankIcon { name: root.isVideoMode ? "movie" : "image"; size: 18; color: Theme.surfaceVariantText }
                                 StyledText { text: root.isVideoMode ? "Video Format" : "Image Format"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            DankButtonGroup {
-                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
-                                scale: 0.95; transformOrigin: Item.Left
-                                model: root.isVideoMode ? ["MP4", "MKV", "FLV"] : ["PNG", "JPG", "PPM"]
-                                currentIndex: {
-                                    if (root.isVideoMode) {
-                                        return root.videoFormat === "mp4" ? 0 : (root.videoFormat === "mkv" ? 1 : 2);
-                                    } else {
-                                        return root.format === "png" ? 0 : (root.format === "jpg" ? 1 : 2);
-                                    }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 34
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: true
+                                
+                                Keys.onLeftPressed: {
+                                    var maxIdx = root.isVideoMode ? 2 : 2;
+                                    var current = formatGroup.currentIndex;
+                                    var newIdx = Math.max(0, current - 1);
+                                    formatGroup.onSelectionChanged(newIdx, true);
                                 }
-                                onSelectionChanged: function(idx, sel) {
-                                    if (sel) {
+                                Keys.onRightPressed: {
+                                    var maxIdx = root.isVideoMode ? 2 : 2;
+                                    var current = formatGroup.currentIndex;
+                                    var newIdx = Math.min(maxIdx, current + 1);
+                                    formatGroup.onSelectionChanged(newIdx, true);
+                                }
+
+                                DankButtonGroup {
+                                    id: formatGroup
+                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
+                                    anchors.centerIn: parent
+                                    scale: 0.95; transformOrigin: Item.Center
+                                    model: root.isVideoMode ? ["MP4", "MKV", "FLV"] : ["PNG", "JPG", "PPM"]
+                                    currentIndex: {
                                         if (root.isVideoMode) {
-                                            var vfmts = ["mp4", "mkv", "flv"];
-                                            root.videoFormat = vfmts[idx];
-                                            root._save("videoFormat", root.videoFormat);
+                                            return root.videoFormat === "mp4" ? 0 : (root.videoFormat === "mkv" ? 1 : 2);
                                         } else {
-                                            var fmts = ["png", "jpg", "ppm"];
-                                            root.format = fmts[idx];
-                                            root._save("format", root.format);
+                                            return root.format === "png" ? 0 : (root.format === "jpg" ? 1 : 2);
+                                        }
+                                    }
+                                    onSelectionChanged: function(idx, sel) {
+                                        if (sel) {
+                                            if (root.isVideoMode) {
+                                                var vfmts = ["mp4", "mkv", "flv"];
+                                                root.videoFormat = vfmts[idx];
+                                                root._save("videoFormat", root.videoFormat);
+                                            } else {
+                                                var fmts = ["png", "jpg", "ppm"];
+                                                root.format = fmts[idx];
+                                                root._save("format", root.format);
+                                            }
                                         }
                                     }
                                 }
@@ -1090,6 +1291,7 @@ PluginComponent {
                                 font.pixelSize: 12
                                 text: root.quality.toString()
                                 placeholderText: "90"
+                                activeFocusOnTab: false
                                 onEditingFinished: {
                                     var v = parseInt(text);
                                     if (!isNaN(v)) { root.quality = v; root._save("quality", v); }
@@ -1124,6 +1326,7 @@ PluginComponent {
                                 font.pixelSize: 12
                                 text: root.isVideoMode ? root.videoCustomPath : root.customPath
                                 placeholderText: root.isVideoMode ? "~/Videos" : "~/Pictures/Screenshots"
+                                activeFocusOnTab: false
                                 onEditingFinished: {
                                     if (root.isVideoMode) {
                                         root.videoCustomPath = text;
@@ -1165,20 +1368,43 @@ PluginComponent {
                                 DankIcon { name: "speed"; size: 18; color: Theme.surfaceVariantText }
                                 StyledText { text: "Video FPS"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            DankButtonGroup {
-                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
-                                scale: 0.95; transformOrigin: Item.Left
-                                model: ["24 FPS", "30 FPS", "60 FPS"]
-                                currentIndex: {
-                                    if (root.videoFPS == 30) return 1;
-                                    if (root.videoFPS == 60) return 2;
-                                    return 0; // 24
+                            Rectangle {
+                                Layout.fillWidth: true; height: 34
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: true
+                                
+                                Keys.onLeftPressed: {
+                                    var maxIdx = 2;
+                                    var current = fpsGroup.currentIndex;
+                                    var newIdx = Math.max(0, current - 1);
+                                    fpsGroup.onSelectionChanged(newIdx, true);
                                 }
-                                onSelectionChanged: function(idx, sel) {
-                                    if (sel) {
-                                        var fps = [24, 30, 60];
-                                        root.videoFPS = fps[idx];
-                                        root._save("videoFPS", root.videoFPS);
+                                Keys.onRightPressed: {
+                                    var maxIdx = 2;
+                                    var current = fpsGroup.currentIndex;
+                                    var newIdx = Math.min(maxIdx, current + 1);
+                                    fpsGroup.onSelectionChanged(newIdx, true);
+                                }
+
+                                DankButtonGroup {
+                                    id: fpsGroup
+                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
+                                    anchors.centerIn: parent
+                                    scale: 0.95; transformOrigin: Item.Center
+                                    model: ["24 FPS", "30 FPS", "60 FPS"]
+                                    currentIndex: {
+                                        if (root.videoFPS == 30) return 1;
+                                        if (root.videoFPS == 60) return 2;
+                                        return 0; // 24
+                                    }
+                                    onSelectionChanged: function(idx, sel) {
+                                        if (sel) {
+                                            var fps = [24, 30, 60];
+                                            root.videoFPS = fps[idx];
+                                            root._save("videoFPS", root.videoFPS);
+                                        }
                                     }
                                 }
                             }
@@ -1207,21 +1433,44 @@ PluginComponent {
                                 DankIcon { name: "high_quality"; size: 18; color: Theme.surfaceVariantText }
                                 StyledText { text: "Video Quality (CRF/Preset)"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            DankButtonGroup {
-                                Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
-                                scale: 0.95; transformOrigin: Item.Left
-                                model: ["Med", "High", "V.High", "Ultra"]
-                                currentIndex: {
-                                    if (root.videoQuality === "high") return 1;
-                                    if (root.videoQuality === "very_high") return 2;
-                                    if (root.videoQuality === "ultra") return 3;
-                                    return 0;
+                            Rectangle {
+                                Layout.fillWidth: true; height: 34
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: true
+                                
+                                Keys.onLeftPressed: {
+                                    var maxIdx = 3;
+                                    var current = qualityGroup.currentIndex;
+                                    var newIdx = Math.max(0, current - 1);
+                                    qualityGroup.onSelectionChanged(newIdx, true);
                                 }
-                                onSelectionChanged: function(idx, sel) {
-                                    if (sel) {
-                                        var q = ["medium", "high", "very_high", "ultra"];
-                                        root.videoQuality = q[idx];
-                                        root._save("videoQuality", root.videoQuality);
+                                Keys.onRightPressed: {
+                                    var maxIdx = 3;
+                                    var current = qualityGroup.currentIndex;
+                                    var newIdx = Math.min(maxIdx, current + 1);
+                                    qualityGroup.onSelectionChanged(newIdx, true);
+                                }
+
+                                DankButtonGroup {
+                                    id: qualityGroup
+                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
+                                    anchors.centerIn: parent
+                                    scale: 0.95; transformOrigin: Item.Center
+                                    model: ["Med", "High", "V.High", "Ultra"]
+                                    currentIndex: {
+                                        if (root.videoQuality === "high") return 1;
+                                        if (root.videoQuality === "very_high") return 2;
+                                        if (root.videoQuality === "ultra") return 3;
+                                        return 0;
+                                    }
+                                    onSelectionChanged: function(idx, sel) {
+                                        if (sel) {
+                                            var q = ["medium", "high", "very_high", "ultra"];
+                                            root.videoQuality = q[idx];
+                                            root._save("videoQuality", root.videoQuality);
+                                        }
                                     }
                                 }
                             }
@@ -1250,22 +1499,48 @@ PluginComponent {
                                 DankIcon { name: "settings_applications"; size: 18; color: Theme.surfaceVariantText }
                                 StyledText { text: "Video Codec"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            DankDropdown {
-                                Layout.fillWidth: true; height: 32
-                                compactMode: true
-                                currentValue: {
-                                    var codes = {"auto": "Auto (Recomended)", "av1": "AV1", "av1_10bit": "AV1 (10 Bit)", "av1_hdr": "AV1 (HDR)", "h264": "H.264 SE (Not Recomended)"};
-                                    return codes[root.videoCodec] || "Auto (Recomended)";
+                            Rectangle {
+                                Layout.fillWidth: true; height: 36
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: true
+                                
+                                property var keys: ["auto", "av1", "av1_10bit", "av1_hdr", "h264"]
+                                
+                                Keys.onLeftPressed: {
+                                    var idx = keys.indexOf(root.videoCodec);
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.max(0, idx - 1);
+                                    root.videoCodec = keys[newIdx];
+                                    root._save("videoCodec", root.videoCodec);
                                 }
-                                options: ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"]
-                                onValueChanged: {
-                                    var opts = ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"];
-                                    var vals = ["auto", "av1", "av1_10bit", "av1_hdr", "h264"];
-                                    for (var i = 0; i < opts.length; i++) {
-                                        if (opts[i] === String(value)) {
-                                            root.videoCodec = vals[i];
-                                            root._save("videoCodec", root.videoCodec);
-                                            break;
+                                Keys.onRightPressed: {
+                                    var idx = keys.indexOf(root.videoCodec);
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.min(keys.length - 1, idx + 1);
+                                    root.videoCodec = keys[newIdx];
+                                    root._save("videoCodec", root.videoCodec);
+                                }
+
+                                DankDropdown {
+                                    width: parent.width; height: 32
+                                    anchors.centerIn: parent
+                                    compactMode: true
+                                    currentValue: {
+                                        var codes = {"auto": "Auto (Recomended)", "av1": "AV1", "av1_10bit": "AV1 (10 Bit)", "av1_hdr": "AV1 (HDR)", "h264": "H.264 SE (Not Recomended)"};
+                                        return codes[root.videoCodec] || "Auto (Recomended)";
+                                    }
+                                    options: ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"]
+                                    onValueChanged: {
+                                        var opts = ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"];
+                                        var vals = ["auto", "av1", "av1_10bit", "av1_hdr", "h264"];
+                                        for (var i = 0; i < opts.length; i++) {
+                                            if (opts[i] === String(value)) {
+                                                root.videoCodec = vals[i];
+                                                root._save("videoCodec", root.videoCodec);
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1295,22 +1570,48 @@ PluginComponent {
                                 DankIcon { name: "audio_file"; size: 18; color: Theme.surfaceVariantText }
                                 StyledText { text: "Audio Codec"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            DankDropdown {
-                                Layout.fillWidth: true; height: 32
-                                compactMode: true
-                                currentValue: {
-                                    var codes = {"opus": "Opus (Recomended)", "aac": "AAC"};
-                                    return codes[root.audioCodec] || "AAC";
+                            Rectangle {
+                                Layout.fillWidth: true; height: 36
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: true
+                                
+                                property var keys: ["opus", "aac"]
+                                
+                                Keys.onLeftPressed: {
+                                    var idx = keys.indexOf(root.audioCodec);
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.max(0, idx - 1);
+                                    root.audioCodec = keys[newIdx];
+                                    root._save("audioCodec", root.audioCodec);
                                 }
-                                options: ["Opus (Recomended)", "AAC"]
-                                onValueChanged: {
-                                    var opts = ["Opus (Recomended)", "AAC"];
-                                    var vals = ["opus", "aac"];
-                                    for (var i = 0; i < opts.length; i++) {
-                                        if (opts[i] === String(value)) {
-                                            root.audioCodec = vals[i];
-                                            root._save("audioCodec", root.audioCodec);
-                                            break;
+                                Keys.onRightPressed: {
+                                    var idx = keys.indexOf(root.audioCodec);
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.min(keys.length - 1, idx + 1);
+                                    root.audioCodec = keys[newIdx];
+                                    root._save("audioCodec", root.audioCodec);
+                                }
+
+                                DankDropdown {
+                                    width: parent.width; height: 32
+                                    anchors.centerIn: parent
+                                    compactMode: true
+                                    currentValue: {
+                                        var codes = {"opus": "Opus (Recomended)", "aac": "AAC"};
+                                        return codes[root.audioCodec] || "AAC";
+                                    }
+                                    options: ["Opus (Recomended)", "AAC"]
+                                    onValueChanged: {
+                                        var opts = ["Opus (Recomended)", "AAC"];
+                                        var vals = ["opus", "aac"];
+                                        for (var i = 0; i < opts.length; i++) {
+                                            if (opts[i] === String(value)) {
+                                                root.audioCodec = vals[i];
+                                                root._save("audioCodec", root.audioCodec);
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1342,22 +1643,56 @@ PluginComponent {
                                 DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
                                 StyledText { text: "Mic Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            DankDropdown {
-                                Layout.fillWidth: true; height: 32
-                                compactMode: true
-                                currentValue: {
+                            Rectangle {
+                                Layout.fillWidth: true; height: 36
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: true
+                                
+                                Keys.onLeftPressed: {
+                                    var idx = -1;
                                     for (var i = 0; i < root.micList.length; i++) {
-                                        if (root.micList[i].value === root.videoMic) return root.micList[i].label;
+                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
                                     }
-                                    return root.videoMic || "Default";
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.max(0, idx - 1);
+                                    if (root.micList.length > 0) {
+                                        root.videoMic = root.micList[newIdx].value;
+                                        root._save("videoMic", root.videoMic);
+                                    }
                                 }
-                                options: root.micList.map(function(item) { return item.label; })
-                                onValueChanged: {
+                                Keys.onRightPressed: {
+                                    var idx = -1;
                                     for (var i = 0; i < root.micList.length; i++) {
-                                        if (root.micList[i].label === value) {
-                                            root.videoMic = root.micList[i].value;
-                                            root._save("videoMic", root.videoMic);
-                                            break;
+                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
+                                    }
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.min(root.micList.length - 1, idx + 1);
+                                    if (root.micList.length > 0) {
+                                        root.videoMic = root.micList[newIdx].value;
+                                        root._save("videoMic", root.videoMic);
+                                    }
+                                }
+
+                                DankDropdown {
+                                    width: parent.width; height: 32
+                                    anchors.centerIn: parent
+                                    compactMode: true
+                                    currentValue: {
+                                        for (var i = 0; i < root.micList.length; i++) {
+                                            if (root.micList[i].value === root.videoMic) return root.micList[i].label;
+                                        }
+                                        return root.videoMic || "Default";
+                                    }
+                                    options: root.micList.map(function(item) { return item.label; })
+                                    onValueChanged: {
+                                        for (var i = 0; i < root.micList.length; i++) {
+                                            if (root.micList[i].label === value) {
+                                                root.videoMic = root.micList[i].value;
+                                                root._save("videoMic", root.videoMic);
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1365,12 +1700,18 @@ PluginComponent {
                             
                             // Mic Testing Button
                             Rectangle {
+                                id: testMicRect
                                 Layout.fillWidth: true
                                 height: 32
                                 radius: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? 16 : 8
-                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMa2.containsMouse ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.1) : "transparent")
+                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMa2.containsMouse || testMicRect.activeFocus ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.25) : "transparent")
                                 border.color: Theme.primary || "#38bdf8"
                                 border.width: 1
+                                
+                                focus: true
+                                activeFocusOnTab: visible
+                                Keys.onReturnPressed: testMicMa2.clicked(null)
+                                Keys.onSpacePressed: testMicMa2.clicked(null)
                                 
                                 Behavior on color { ColorAnimation { duration: 150 } }
                                 Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
@@ -1464,6 +1805,7 @@ PluginComponent {
                 anchors.right: pillContainer.right
                 anchors.rightMargin: 0 // Flush right to match settingsBubble
                 
+                visible: opacity > 0.01
                 opacity: root.delayExpanded ? 1 : 0
                 scale: root.delayExpanded ? 1 : 0.9
                 transformOrigin: Item.BottomRight
@@ -1536,6 +1878,7 @@ PluginComponent {
                                     active: root.delaySeconds === modelData.value
                                     isOption: true // Shows a checkmark instead of a switch
                                     isLast: index === 3
+                                    isHighlighted: root.delayExpanded && index === root.delaySelectedIndex
                                     onToggled: {
                                         root.delaySeconds = modelData.value;
                                         root._save("delaySeconds", root.delaySeconds);
@@ -1563,6 +1906,7 @@ PluginComponent {
                 anchors.bottomMargin: 24
                 anchors.horizontalCenter: pillContainer.horizontalCenter
                 
+                visible: opacity > 0.01
                 opacity: root.monitorExpanded ? 1 : 0
                 scale: root.monitorExpanded ? 1 : 0.9
                 transformOrigin: Item.Bottom
@@ -1629,6 +1973,7 @@ PluginComponent {
                                     active: root.videoMonitor === modelData.value
                                     isOption: true
                                     isLast: index === root.monitorList.length - 1
+                                    isHighlighted: root.monitorExpanded && index === root.monitorSelectedIndex
                                     onToggled: {
                                         root.videoMonitor = modelData.value;
                                         root._save("videoMonitor", root.videoMonitor);
@@ -1795,6 +2140,12 @@ PluginComponent {
                     id: hintText
                     anchors.centerIn: parent
                     text: {
+                        if (root.controllerConnected && root.enableController) {
+                            if (root.isRecording) return "Press (Home/Guide) To Stop Recording";
+                            if (root.isVideoMode) return "Press (A) To Record  •  (B) To Close";
+                            return "Press (A) To Capture  •  (B) To Close";
+                        }
+                        
                         if (root.isVideoMode) return "Press Space To Record";
                         
                         let isSwap = !!root.swapCaptureKeys;
@@ -1966,7 +2317,7 @@ PluginComponent {
                 ? (isDark ? "black" : "white")
                 : ((ma.containsMouse || ma.pressed) ? "white" : Theme.primary)
             anchors.centerIn: parent
-            rotation: (ma.containsMouse ? 8 : 0) + (isActive ? 360 : 0)
+            rotation: (ma.containsMouse ? (iconName === "stop" ? -360 : 8) : 0) + (isActive ? 360 : 0)
             Behavior on rotation { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
             Behavior on color { ColorAnimation { duration: 150 } }
         }
@@ -1986,12 +2337,23 @@ PluginComponent {
         property bool active: false
         property bool isOption: false // If true, shows a dot instead of a switch
         property bool isLast: false
+        property bool isHighlighted: false
         signal toggled()
 
         width: parent.width; height: visible ? 44 : 0
-        color: ma.containsMouse ? Theme.withAlpha(Theme.primary || "#ffffff", 0.08) : "transparent"
+        color: (toggleRoot.isHighlighted || toggleRoot.activeFocus) ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : 
+               (ma.containsMouse ? Theme.withAlpha(Theme.primary || "#ffffff", 0.08) : "transparent")
         clip: true
         radius: 12
+        
+        focus: true
+        activeFocusOnTab: visible
+        Keys.onReturnPressed: toggleRoot.toggled()
+        Keys.onSpacePressed: toggleRoot.toggled()
+        
+        onIsHighlightedChanged: {
+            if (isHighlighted) toggleRoot.forceActiveFocus();
+        }
 
         // Custom Ripple Effect
         Rectangle {

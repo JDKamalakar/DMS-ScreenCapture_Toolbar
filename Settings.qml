@@ -10,6 +10,9 @@ import QtCore
 PluginSettings {
     id: root
     pluginId: "screenCaptureToolbar"
+    
+    focus: true
+    activeFocusOnTab: true
 
 
     property var monitorList: [{label: "Focused", value: "Focused"}]
@@ -745,6 +748,18 @@ PluginSettings {
                         label: "Show Recording Pill"
                         description: "Show the status pill at the top during recording"
                         defaultValue: true
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "stadia_controller"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "enableController"
+                        label: "Enable Controller Support"
+                        description: "Allow gamepads to trigger and navigate the toolbar via IPC"
+                        defaultValue: false
                     }
                 }
             }
