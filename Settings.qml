@@ -174,7 +174,7 @@ PluginSettings {
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "camera"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: parent.width - 22 - Theme.spacingM
                         settingKey: "captureMode"
                         label: "Screenshot Mode"
@@ -235,7 +235,7 @@ PluginSettings {
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "image"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: parent.width - 22 - Theme.spacingM
                         settingKey: "format"
                         label: "Image Format"
@@ -276,7 +276,7 @@ PluginSettings {
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "timer"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: parent.width - 22 - Theme.spacingM
                         settingKey: "delaySeconds"
                         label: "Capture Delay"
@@ -324,7 +324,7 @@ PluginSettings {
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "videocam"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: parent.width - 22 - Theme.spacingM
                         settingKey: "videoFormat"
                         label: "Video Format"
@@ -365,7 +365,7 @@ PluginSettings {
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "speed"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: parent.width - 22 - Theme.spacingM
                         settingKey: "videoFPS"
                         label: "Video FPS"
@@ -393,7 +393,7 @@ PluginSettings {
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
                         settingKey: "videoQuality"
                         label: "Video Quality"
@@ -412,7 +412,7 @@ PluginSettings {
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
                     DankIcon { name: "settings_applications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
                         settingKey: "videoCodec"
                         label: "Video Codec"
@@ -432,7 +432,7 @@ PluginSettings {
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
                     DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
                         settingKey: "audioCodec"
                         label: "Audio Codec"
@@ -449,7 +449,7 @@ PluginSettings {
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.captureMode === "monitor"
                     DankIcon { name: "desktop_windows"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
                         settingKey: "videoMonitor"
                         label: "Target Monitor"
@@ -463,7 +463,7 @@ PluginSettings {
                     width: parent.width; spacing: Theme.spacingM
                     visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
                     DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSetting {
+                    SelectionSettingV2 {
                         width: Math.max(0, parent.width - 22 - Theme.spacingM)
                         settingKey: "videoMic"
                         label: "Microphone Device"
