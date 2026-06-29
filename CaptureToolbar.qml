@@ -34,10 +34,12 @@ PluginComponent {
     readonly property string defaultPipeCommand: "{ mkdir -p \"$HOME/Pictures/Screenshots\"; satty --filename - --output-filename \"$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png\"; }"
 
     property var monitorList: {
-        var l = ["default"];
+        var l = [{label: "Focused", value: "Focused"}];
         for (var i = 0; i < Quickshell.screens.length; i++) {
             if (Quickshell.screens[i].name) {
-                l.push(Quickshell.screens[i].name);
+                var s = Quickshell.screens[i];
+                var desc = s.description || s.model || s.name;
+                l.push({label: desc, value: s.name});
             }
         }
         return l;
@@ -144,7 +146,7 @@ PluginComponent {
     property string videoCustomPath: (pluginData && pluginData.videoCustomPath) || ""
     property string videoFilename: (pluginData && pluginData.videoFilename) || ""
     property string videoQuality: (pluginData && pluginData.videoQuality) || "medium"
-    property string videoMonitor: (pluginData && pluginData.videoMonitor) || "default"
+    property string videoMonitor: (pluginData && pluginData.videoMonitor) || "Focused"
     property string videoMic: (pluginData && pluginData.videoMic) || "default"
 
     property bool isRecording: false
@@ -459,7 +461,7 @@ PluginComponent {
         root.videoCustomPath = pluginData.videoCustomPath || "";
         root.videoFilename = pluginData.videoFilename || "";
         root.videoQuality = pluginData.videoQuality || "medium";
-        root.videoMonitor = pluginData.videoMonitor || "default";
+        root.videoMonitor = pluginData.videoMonitor || "Focused";
         root.videoMic = pluginData.videoMic || "default";
         root.showAdvancedSettings = pluginData.showAdvancedSettings !== undefined ? pluginData.showAdvancedSettings : false;
 
@@ -664,7 +666,7 @@ PluginComponent {
                 "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
                 "fi";
         } else if (root.captureMode === "monitor") {
-            let mon = (root.videoMonitor !== "default") ? root.videoMonitor : "portal";
+            let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "portal";
             execCmd = "sleep " + root.delaySeconds + "; " + prepends.join(" ") + " gpu-screen-recorder -w " + mon + gsrSuffix + " -o " + filename;
         } else if (root.captureMode === "all") {
             scriptBody = "sleep 0.2; mkdir -p \"" + dir + "\"; " +
@@ -1320,11 +1322,22 @@ PluginComponent {
                             DankButtonGroup {
                                 Layout.fillWidth: true; buttonHeight: 30; minButtonWidth: 54
                                 scale: 0.95; transformOrigin: Item.Left
-                                model: root.monitorList
-                                currentIndex: Math.max(0, root.monitorList.indexOf(root.videoMonitor))
+                                model: {
+                                    var arr = [];
+                                    for (var i = 0; i < root.monitorList.length; i++) {
+                                        arr.push(root.monitorList[i].label);
+                                    }
+                                    return arr;
+                                }
+                                currentIndex: {
+                                    for (var i = 0; i < root.monitorList.length; i++) {
+                                        if (root.monitorList[i].value === root.videoMonitor) return i;
+                                    }
+                                    return 0;
+                                }
                                 onSelectionChanged: function(idx, sel) {
                                     if (sel) {
-                                        root.videoMonitor = root.monitorList[idx];
+                                        root.videoMonitor = root.monitorList[idx].value;
                                         root._save("videoMonitor", root.videoMonitor);
                                     }
                                 }
@@ -1631,13 +1644,13 @@ PluginComponent {
                             Repeater {
                                 model: root.monitorList
                                 delegate: SettingToggle {
-                                    label: modelData
+                                    label: modelData.label
                                     iconName: "monitor"
-                                    active: root.videoMonitor === modelData
+                                    active: root.videoMonitor === modelData.value
                                     isOption: true
                                     isLast: index === root.monitorList.length - 1
                                     onToggled: {
-                                        root.videoMonitor = modelData;
+                                        root.videoMonitor = modelData.value;
                                         root._save("videoMonitor", root.videoMonitor);
                                         root.monitorExpanded = false;
                                     }

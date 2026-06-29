@@ -13,10 +13,12 @@ PluginSettings {
 
 
     property var monitorList: {
-        var l = ["default"];
+        var l = [{label: "Focused", value: "Focused"}];
         for (var i = 0; i < Quickshell.screens.length; i++) {
             if (Quickshell.screens[i].name) {
-                l.push(Quickshell.screens[i].name);
+                var s = Quickshell.screens[i];
+                var desc = s.description || s.model || s.name;
+                l.push({label: desc, value: s.name});
             }
         }
         return l;
@@ -442,8 +444,8 @@ PluginSettings {
                         settingKey: "videoMonitor"
                         label: "Target Monitor"
                         description: "Monitor to record when in multi-monitor setup"
-                        options: root.monitorList.map(function(m) { return {label: m, value: m}; })
-                        defaultValue: "default"
+                        options: root.monitorList
+                        defaultValue: "Focused"
                     }
                 }
 
