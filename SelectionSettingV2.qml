@@ -96,7 +96,7 @@ Item {
             compactMode: true
             currentValue: root.valueToLabel[root.value] || root.value
             options: root.optionLabels
-            onValueChanged: function(newValue) {
+            onValueChanged: newValue => {
                 root.value = root.labelToValue[newValue] || newValue
             }
         }
