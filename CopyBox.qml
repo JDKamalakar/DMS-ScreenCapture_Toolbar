@@ -28,12 +28,12 @@ Column {
 
         Row {
             id: cmdRow
-            width: parent.width - 16
+            width: Math.max(0, parent.width - 16)
             anchors.centerIn: parent
             spacing: 8
 
             StyledText {
-                width: parent.width - 32
+                width: Math.max(0, parent.width - 32)
                 text: root.text
                 font.family: "Monospace"
                 font.pixelSize: Theme.fontSizeSmall
