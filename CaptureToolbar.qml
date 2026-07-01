@@ -158,6 +158,7 @@ PluginComponent {
     property string videoQuality: (pluginData && pluginData.videoQuality) || "medium"
     property string videoMonitor: (pluginData && pluginData.videoMonitor === "default") ? "Focused" : ((pluginData && pluginData.videoMonitor) || "Focused")
     property string videoMic: (pluginData && pluginData.videoMic) || "default"
+    property string lastSavedVideoPath: ""
 
     property bool isRecording: false
     property bool isPaused: false
@@ -167,6 +168,7 @@ PluginComponent {
     property var recordingProcess: null
     property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
     property bool showNotify: (pluginData && pluginData.showNotify !== undefined) ? pluginData.showNotify : true
+    property bool copyPathOnRecord: (pluginData && pluginData.copyPathOnRecord !== undefined) ? pluginData.copyPathOnRecord : true
     property bool enableEditorShortcut: (pluginData && pluginData.enableEditorShortcut != null) ? pluginData.enableEditorShortcut : true
     property bool swapCaptureKeys: (pluginData && pluginData.swapCaptureKeys != null) ? pluginData.swapCaptureKeys : false
     property int delaySeconds: (pluginData && pluginData.delaySeconds != null) ? pluginData.delaySeconds : 0
@@ -875,6 +877,7 @@ PluginComponent {
             root.isPaused = false;
             root.recordingElapsed = 0;
         }
+        root.lastSavedVideoPath = path;
         root.close();
 
         Quickshell.execDetached(["bash", "-c", finalCmd]);
@@ -894,7 +897,8 @@ PluginComponent {
         root.recordingElapsed = 0;
 
         if (root.showNotify) {
-            Quickshell.execDetached(["notify-send", "Recording Stopped", "Video saved to " + (root.videoCustomPath || "~/Videos")]);
+            let cmd = root.copyPathOnRecord ? "file://" + root.lastSavedVideoPath : "";
+            Quickshell.execDetached(["dms", "ipc", "call", "toast", "infoWith", "Recording Stopped", "Saved to " + root.lastSavedVideoPath, cmd, "screencapture"]);
         }
     }
 

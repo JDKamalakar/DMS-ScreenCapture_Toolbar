@@ -741,6 +741,18 @@ PluginSettings {
 
                 Row {
                     width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM
+                        settingKey: "copyPathOnRecord"
+                        label: "Add Copy Path Button"
+                        description: "Add a button to the notification to easily copy the video path"
+                        defaultValue: true
+                    }
+                }
+
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "pill"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
                         width: parent.width - 22 - Theme.spacingM
