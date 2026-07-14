@@ -744,9 +744,9 @@ PluginSettings {
                     DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
                         width: parent.width - 22 - Theme.spacingM
-                        settingKey: "copyPathOnRecord"
-                        label: "Add Copy Path Button"
-                        description: "Add a button to the notification to easily copy the video path"
+                        settingKey: "copyPathOnCapture"
+                        label: "Copy Path on Capture"
+                        description: "Automatically copy the file path to clipboard after saving a screenshot or recording"
                         defaultValue: true
                     }
                 }
