@@ -25,6 +25,70 @@ PluginComponent {
     property bool enableController: (pluginData && pluginData.enableController !== undefined) ? pluginData.enableController : false
     property bool controllerConnected: false
 
+    onSettingsExpandedChanged: {
+        if (!settingsExpanded && !delayExpanded && !monitorExpanded) {
+            globalKeyHandler.forceActiveFocus();
+        }
+    }
+    onDelayExpandedChanged: {
+        if (!settingsExpanded && !delayExpanded && !monitorExpanded) {
+            globalKeyHandler.forceActiveFocus();
+        }
+    }
+    onMonitorExpandedChanged: {
+        if (!settingsExpanded && !delayExpanded && !monitorExpanded) {
+            globalKeyHandler.forceActiveFocus();
+        }
+    }
+
+    onVideoMonitorChanged: {
+        for (var i = 0; i < monitorList.length; i++) {
+            if (monitorList[i].value === videoMonitor) {
+                monitorSelectedIndex = i;
+                break;
+            }
+        }
+    }
+
+    onMonitorListChanged: {
+        for (var i = 0; i < monitorList.length; i++) {
+            if (monitorList[i].value === videoMonitor) {
+                monitorSelectedIndex = i;
+                return;
+            }
+        }
+        monitorSelectedIndex = 0;
+    }
+
+    onDelaySecondsChanged: {
+        var delays = [0, 3, 5, 10];
+        var idx = delays.indexOf(delaySeconds);
+        if (idx >= 0) {
+            delaySelectedIndex = idx;
+        }
+    }
+
+    onMonitorSelectedIndexChanged: {
+        if (monitorSelectedIndex >= 0 && monitorSelectedIndex < monitorList.length) {
+            var val = monitorList[monitorSelectedIndex].value;
+            if (videoMonitor !== val) {
+                videoMonitor = val;
+                root._save("videoMonitor", videoMonitor);
+            }
+        }
+    }
+
+    onDelaySelectedIndexChanged: {
+        var delays = [0, 3, 5, 10];
+        if (delaySelectedIndex >= 0 && delaySelectedIndex < delays.length) {
+            var val = delays[delaySelectedIndex];
+            if (delaySeconds !== val) {
+                delaySeconds = val;
+                root._save("delaySeconds", delaySeconds);
+            }
+        }
+    }
+
     // -- Screenshot Settings -------------------------------------------------
     property bool showPointer: (pluginData && pluginData.showPointer != null) ? pluginData.showPointer : true
     property bool saveToDisk: (pluginData && pluginData.saveToDisk != null) ? pluginData.saveToDisk : true
@@ -158,6 +222,7 @@ PluginComponent {
     property string videoQuality: (pluginData && pluginData.videoQuality) || "medium"
     property string videoMonitor: (pluginData && pluginData.videoMonitor === "default") ? "Focused" : ((pluginData && pluginData.videoMonitor) || "Focused")
     property string videoMic: (pluginData && pluginData.videoMic) || "default"
+    property string lastSavedVideoPath: ""
 
     property bool isRecording: false
     property bool isPaused: false
@@ -167,6 +232,8 @@ PluginComponent {
     property var recordingProcess: null
     property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
     property bool showNotify: (pluginData && pluginData.showNotify !== undefined) ? pluginData.showNotify : true
+    property bool copyPathOnCapture: (pluginData && pluginData.copyPathOnCapture !== undefined) ? pluginData.copyPathOnCapture : true
+    property bool copyVideoFile: (pluginData && pluginData.copyVideoFile !== undefined) ? pluginData.copyVideoFile : false
     property bool enableEditorShortcut: (pluginData && pluginData.enableEditorShortcut != null) ? pluginData.enableEditorShortcut : true
     property bool swapCaptureKeys: (pluginData && pluginData.swapCaptureKeys != null) ? pluginData.swapCaptureKeys : false
     property int delaySeconds: (pluginData && pluginData.delaySeconds != null) ? pluginData.delaySeconds : 0
@@ -203,6 +270,11 @@ PluginComponent {
         function close(): string {
             root.close();
             return "closed";
+        }
+
+        function debugCapture(): string {
+            root.performCapture(false);
+            return "triggered";
         }
 
         /** Reset recording UI if interactive video setup fails (e.g. slurp cancelled). Called from bash. */
@@ -385,6 +457,7 @@ PluginComponent {
         root.delayExpanded = false;
         root.monitorExpanded = false;
         overlay.visible = true;
+        globalKeyHandler.forceActiveFocus();
     }
 
     function close() {
@@ -434,6 +507,8 @@ PluginComponent {
                 else if (key === "showPointer") root.showPointer = value;
                 else if (key === "showNotify") root.showNotify = value;
                 else if (key === "showRecPill") root.showRecPill = value;
+                else if (key === "copyPathOnCapture") root.copyPathOnCapture = value;
+                else if (key === "copyVideoFile") root.copyVideoFile = value;
                 else if (key === "enableController") root.enableController = value;
                 else if (key === "captureMode") root.captureMode = value;
                 else if (key === "format") root.format = value;
@@ -636,6 +711,8 @@ PluginComponent {
         root.videoMonitor = (pluginData.videoMonitor === "default") ? "Focused" : (pluginData.videoMonitor || "Focused");
         root.videoMic = pluginData.videoMic || "default";
         root.showAdvancedSettings = pluginData.showAdvancedSettings !== undefined ? pluginData.showAdvancedSettings : false;
+        root.copyVideoFile = pluginData.copyVideoFile !== undefined ? pluginData.copyVideoFile : false;
+        root.copyPathOnCapture = pluginData.copyPathOnCapture !== undefined ? pluginData.copyPathOnCapture : true;
 
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
         root.enableController = pluginData.enableController !== undefined ? pluginData.enableController : false;
@@ -679,6 +756,7 @@ PluginComponent {
         onTriggered: root.handleCapture(root.captureMode, forceEdit)
     }
 
+
     function handleCapture(mode, forceEdit = false) {
         if (mode) root.captureMode = mode;
 
@@ -714,7 +792,9 @@ PluginComponent {
         if (!root.copyToClipboard) dmsStr += " --no-clipboard";
         if (!root.showNotify) dmsStr += " --no-notify";
         if (useStdout) dmsStr += " --stdout";
-        if (root.filename !== "") dmsStr += " --filename \"" + root.filename + "\"";
+        
+        let generatedName = root.filename !== "" ? root.filename : "screenshot_" + root.filenameTimestamp() + "." + root.format;
+        dmsStr += " --filename \"" + generatedName + "\"";
 
         dmsStr += " -f " + root.format;
         if (root.format === "jpg") dmsStr += " -q " + root.quality;
@@ -725,7 +805,12 @@ PluginComponent {
             dmsStr = root.editorAvailabilityGuard(editorCommand) + dmsStr + " | " + editorCommand;
         }
 
-        return "mkdir -p \"" + root.expandHome(dir) + "\"; " + dmsStr;
+        let cmd = "mkdir -p \"" + root.expandHome(dir) + "\" && " + dmsStr;
+        if (root.copyPathOnCapture && root.saveToDisk) {
+            let finalPath = root.expandHome(dir) + "/" + generatedName;
+            cmd += " && if command -v wl-copy >/dev/null 2>&1; then FILE=" + root.shellQuote(finalPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"$FILE\" | wl-copy; fi";
+        }
+        return cmd;
     }
 
     function buildMultiMonitorScreenshotCommand(forceEditor) {
@@ -756,6 +841,9 @@ PluginComponent {
             script += "DIR=" + root.shellQuote(dir) + "; OUT=" + root.shellQuote(outputPath) + "; DIR=\"${DIR/#\\~/$HOME}\"; OUT=\"${OUT/#\\~/$HOME}\"; mkdir -p \"$DIR\"; " + captureToFile + "; ";
             if (root.copyToClipboard) {
                 script += "if command -v wl-copy >/dev/null 2>&1; then wl-copy -t " + root.shellQuote(mimeType) + " < \"$OUT\"; fi; ";
+            }
+            if (root.copyPathOnCapture) {
+                script += "if command -v wl-copy >/dev/null 2>&1; then echo -n \"$OUT\" | wl-copy; fi; ";
             }
             if (useStdout) {
                 if (editorCommand !== "") script += "cat \"$OUT\" | " + editorCommand + "; ";
@@ -867,7 +955,7 @@ PluginComponent {
             scriptBody = "mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
         }
 
-        let finalCmd = "sleep 0.3; " + (prelude !== "" ? prelude + "; " + scriptBody : scriptBody);
+        let finalCmd = "sleep 0.5; " + (prelude !== "" ? prelude + "; " + scriptBody : scriptBody);
 
         let deferRecordingUi = root.captureMode === "interactive";
         if (!deferRecordingUi) {
@@ -875,6 +963,7 @@ PluginComponent {
             root.isPaused = false;
             root.recordingElapsed = 0;
         }
+        root.lastSavedVideoPath = path;
         root.close();
 
         Quickshell.execDetached(["bash", "-c", finalCmd]);
@@ -893,8 +982,18 @@ PluginComponent {
         root.isMicMuted = false;
         root.recordingElapsed = 0;
 
+        let cmdStr = "while pgrep -f '[g]pu-screen-recorder' >/dev/null; do sleep 0.2; done; sleep 0.2; ";
+        if (root.copyVideoFile) {
+            cmdStr += "FILE=" + root.shellQuote(root.lastSavedVideoPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"file://$FILE\" | wl-copy -t text/uri-list; ";
+        } else if (root.copyPathOnCapture) {
+            cmdStr += "FILE=" + root.shellQuote(root.lastSavedVideoPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"$FILE\" | wl-copy; ";
+        }
+        if (cmdStr !== "while pgrep -f '[g]pu-screen-recorder' >/dev/null; do sleep 0.2; done; sleep 0.2; ") {
+            Quickshell.execDetached(["bash", "-c", cmdStr]);
+        }
+
         if (root.showNotify) {
-            Quickshell.execDetached(["notify-send", "Recording Stopped", "Video saved to " + (root.videoCustomPath || "~/Videos")]);
+            Quickshell.execDetached(["dms", "ipc", "call", "toast", "infoWith", "Recording Stopped", "Saved to " + root.lastSavedVideoPath, "", "screencapture"]);
         }
     }
 
@@ -925,6 +1024,19 @@ PluginComponent {
         onTriggered: root.recordingElapsed++
     }
 
+    Timer {
+        id: autoClosePopupTimer
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            root.settingsExpanded = false;
+            root.delayExpanded = false;
+            root.monitorExpanded = false;
+            globalKeyHandler.forceActiveFocus();
+        }
+    }
+
+
     // -- UI -------------------------------------------------------------------
     PanelWindow {
         id: overlay
@@ -936,6 +1048,12 @@ PluginComponent {
         WlrLayershell.exclusiveZone: -1
         WlrLayershell.keyboardFocus: overlay.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
+        onVisibleChanged: {
+            if (visible) {
+                globalKeyHandler.forceActiveFocus();
+            }
+        }
+
         anchors {
             top: true
             left: true
@@ -944,10 +1062,12 @@ PluginComponent {
         }
 
         Item {
+            id: globalKeyHandler
             anchors.fill: parent
             focus: overlay.visible
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Space) {
+                    console.log("[dms-ss-toolbar] Space key pressed, captureMode =", root.captureMode);
                     event.accepted = true;
                     let isCtrl = !!(event.modifiers & Qt.ControlModifier);
                     let isSwap = !!root.swapCaptureKeys;
@@ -970,7 +1090,66 @@ PluginComponent {
                         }
                     }
                 } else if (event.key === Qt.Key_Escape) {
-                    root.close();
+                    if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                        root.settingsExpanded = false;
+                        root.delayExpanded = false;
+                        root.monitorExpanded = false;
+                        globalKeyHandler.forceActiveFocus();
+                    } else {
+                        root.close();
+                    }
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Z) {
+                    root.isVideoMode = !root.isVideoMode;
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_X) {
+                    if (root.captureMode !== "monitor") {
+                        root.captureMode = "monitor";
+                        root._save("captureMode", "monitor");
+                    }
+                    root.monitorExpanded = true;
+                    root.settingsExpanded = false;
+                    root.delayExpanded = false;
+                    
+                    let idx = 0;
+                    for (let i = 0; i < root.monitorList.length; i++) {
+                        if (root.monitorList[i].value === root.videoMonitor) {
+                            idx = i;
+                            break;
+                        }
+                    }
+                    idx = (idx + 1) % root.monitorList.length;
+                    root.videoMonitor = root.monitorList[idx].value;
+                    root.monitorSelectedIndex = idx;
+                    root._save("videoMonitor", root.videoMonitor);
+                    
+                    autoClosePopupTimer.restart();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_C) {
+                    let modes = ["interactive", "monitor", "all"];
+                    let idx = modes.indexOf(root.captureMode);
+                    if (idx === -1) idx = 0;
+                    root.captureMode = modes[(idx + 1) % modes.length];
+                    root._save("captureMode", root.captureMode);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_A) {
+                    root.delayExpanded = true;
+                    root.settingsExpanded = false;
+                    root.monitorExpanded = false;
+                    
+                    let delays = [0, 3, 5, 10];
+                    let idx = delays.indexOf(root.delaySeconds);
+                    idx = (idx + 1) % delays.length;
+                    root.delaySeconds = delays[idx];
+                    root.delaySelectedIndex = idx;
+                    root._save("delaySeconds", root.delaySeconds);
+                    
+                    autoClosePopupTimer.restart();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_S) {
+                    root.settingsExpanded = !root.settingsExpanded;
+                    root.delayExpanded = false;
+                    root.monitorExpanded = false;
                     event.accepted = true;
                 } else if (root.enableController) {
                     if (event.key === Qt.Key_Right) {
@@ -1176,6 +1355,11 @@ PluginComponent {
                                 onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
                             }
                             SettingToggle {
+                                label: "Copy Video File"; iconName: "content_copy"; active: root.copyVideoFile
+                                visible: root.isVideoMode
+                                onToggled: { root.copyVideoFile = !root.copyVideoFile; root._save("copyVideoFile", root.copyVideoFile) }
+                            }
+                            SettingToggle {
                                 label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
                                 onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
                             }
@@ -1218,7 +1402,7 @@ PluginComponent {
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
-                                focus: true
+                                focus: root.settingsExpanded
                                 
                                 Keys.onLeftPressed: {
                                     var maxIdx = root.isVideoMode ? 2 : 2;
@@ -1373,7 +1557,7 @@ PluginComponent {
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
-                                focus: true
+                                focus: root.settingsExpanded
                                 
                                 Keys.onLeftPressed: {
                                     var maxIdx = 2;
@@ -1438,7 +1622,7 @@ PluginComponent {
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
-                                focus: true
+                                focus: root.settingsExpanded
                                 
                                 Keys.onLeftPressed: {
                                     var maxIdx = 3;
@@ -1504,7 +1688,7 @@ PluginComponent {
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
-                                focus: true
+                                focus: root.settingsExpanded
                                 
                                 property var keys: ["auto", "av1", "av1_10bit", "av1_hdr", "h264"]
                                 
@@ -1575,7 +1759,7 @@ PluginComponent {
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
-                                focus: true
+                                focus: root.settingsExpanded
                                 
                                 property var keys: ["opus", "aac"]
                                 
@@ -1648,7 +1832,7 @@ PluginComponent {
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
-                                focus: true
+                                focus: root.settingsExpanded
                                 
                                 Keys.onLeftPressed: {
                                     var idx = -1;
@@ -1708,7 +1892,7 @@ PluginComponent {
                                 border.color: Theme.primary || "#38bdf8"
                                 border.width: 1
                                 
-                                focus: true
+                                focus: root.settingsExpanded
                                 activeFocusOnTab: visible
                                 Keys.onReturnPressed: testMicMa2.clicked(null)
                                 Keys.onSpacePressed: testMicMa2.clicked(null)
@@ -2056,8 +2240,10 @@ PluginComponent {
                             iconName: "screenshot_region"
                             active: root.captureMode === "interactive"
                             tooltipText: "Interactive Region"
-                            onClicked: { root.captureMode = "interactive"; root._save("captureMode", "interactive"); }
-
+                            onClicked: {
+                                root.captureMode = "interactive";
+                                root._save("captureMode", "interactive");
+                            }
                         }
                         ToolbarBtn {
                             id: monitorBtn
@@ -2065,19 +2251,28 @@ PluginComponent {
                             active: root.captureMode === "monitor"
                             tooltipText: (root.isVideoMode ? "Record Monitor - " : "Capture Monitor - ") + root.getMonitorLabel(root.videoMonitor)
                             onClicked: { 
-                                root.captureMode = "monitor";
-                                root._save("captureMode", "monitor");
-                                root.monitorExpanded = !root.monitorExpanded;
-                                root.settingsExpanded = false;
-                                root.delayExpanded = false;
+                                if (root.captureMode !== "monitor") {
+                                    root.captureMode = "monitor";
+                                    root._save("captureMode", "monitor");
+                                    root.settingsExpanded = false;
+                                    root.delayExpanded = false;
+                                    root.monitorExpanded = false;
+                                } else {
+                                    root.monitorExpanded = !root.monitorExpanded;
+                                    root.settingsExpanded = false;
+                                    root.delayExpanded = false;
+                                }
                             }
                         }
                         ToolbarBtn {
                             isLast: true
-                            iconName: "monitor_weight";
+                            iconName: "monitor_weight"
                             active: root.captureMode === "all"
                             tooltipText: root.isVideoMode ? "Record All" : "All Screens"
-                            onClicked: { root.captureMode = "all"; root._save("captureMode", "all"); }
+                            onClicked: {
+                                root.captureMode = "all";
+                                root._save("captureMode", "all");
+                            }
                         }
                     }
 
@@ -2173,7 +2368,15 @@ PluginComponent {
             }
         }
 
-        Keys.onEscapePressed: root.close()
+        Keys.onEscapePressed: {
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                root.settingsExpanded = false;
+                root.delayExpanded = false;
+                root.monitorExpanded = false;
+            } else {
+                root.close();
+            }
+        }
     }
 
     // -- Components -----------------------------------------------------------
@@ -2346,14 +2549,22 @@ PluginComponent {
         clip: true
         radius: 12
         
-        focus: true
+        focus: root.settingsExpanded
         activeFocusOnTab: visible
         Keys.onReturnPressed: toggleRoot.toggled()
         Keys.onSpacePressed: toggleRoot.toggled()
-        
-        onIsHighlightedChanged: {
-            if (isHighlighted) toggleRoot.forceActiveFocus();
+        Keys.onEscapePressed: {
+            if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
+                root.settingsExpanded = false;
+                root.delayExpanded = false;
+                root.monitorExpanded = false;
+                globalKeyHandler.forceActiveFocus();
+            } else {
+                root.close();
+            }
         }
+        
+        // We do not force active focus here on highlight to prevent focus theft from the global keyboard handler.
 
         // Custom Ripple Effect
         Rectangle {
