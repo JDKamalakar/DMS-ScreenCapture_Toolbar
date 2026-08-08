@@ -20,7 +20,6 @@
     "any"
   ],
   "dependencies": [
-    "dms",
     "gpu screen recorder",
     "slurp",
     "grim",
