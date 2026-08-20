@@ -106,7 +106,8 @@ The toolbar fully supports native gamepad and controller interactions without th
 - **Tactile Interaction**: Features playful 360° spins, tilt-and-jump micro-animations, and responsive Dank Ripples on every interactive element.
 - **Dynamic Settings**: A context-aware popup bubble that automatically filters capture settings (FPS, Audio, Formats) based on your active mode (Photo vs. Video).
 - **Flexible Recording Audio**: Record system output audio and microphone input independently.
-- **Separate Output Settings**: Screenshots and recordings can use independent custom directories and filenames.
+- **Standalone Audio Recorder**: Optional audio recording capability supporting MP3, Opus, FLAC, WAV, AAC (M4A), and OGG formats with customizable quality presets.
+- **Separate Output Settings**: Screenshots, video recordings, and audio recordings can use independent custom directories and filenames.
 - **Versatile Capture**: Native support for interactive region selection, active monitor focus, full-workspace grabbing, and optional `slurp` + `grim` multi-monitor screenshots.
 - **Configurable Capture Delay**: For non-interactive screenshot modes, a **Timer** icon allows choosing 3s, 5s, or 10s delays for capture.
 - **Power Workflow**: Lightning-fast controls with `Spacebar` to trigger captures, `Ctrl+Space` to send a screenshot to the editor, and `Escape` for instant dismissal.

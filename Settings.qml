@@ -14,7 +14,6 @@ PluginSettings {
     focus: true
     activeFocusOnTab: true
 
-
     property var monitorList: [{label: "Focused", value: "Focused"}]
 
     Timer {
@@ -40,7 +39,7 @@ PluginSettings {
     property int micTestCountdown: 0
 
     Process {
-        command: ["bash", "-c", "gpu-screen-recorder --list-audio-devices 2>/dev/null | grep -v '\.monitor' | grep -v 'output' | grep -v 'default_input'"]
+        command: ["bash", "-c", "gpu-screen-recorder --list-audio-devices 2>/dev/null | grep -v '\\.monitor' | grep -v 'output' | grep -v 'default_input'"]
         running: true
         stdout: SplitParser {
             onRead: function(data) {
@@ -136,16 +135,16 @@ PluginSettings {
         }
     }
 
-    // Wrap everything in a Column because PluginSettings is a Flickable 
-    // and needs a single content item or manual layout.
     Column {
         width: parent.width
         spacing: Theme.spacingM
 
-        // --- Screenshot Settings ---
+        // ====================================================================
+        // CONTAINER 1: SCREENSHOT SETTINGS ALL
+        // ====================================================================
         Rectangle {
             width: parent.width
-            height: captureGroup.implicitHeight + Theme.spacingM * 2
+            height: ssGroup.implicitHeight + Theme.spacingM * 2
             color: Theme.surfaceContainer
             radius: Theme.cornerRadius
             border.color: Theme.outline
@@ -153,31 +152,664 @@ PluginSettings {
             opacity: 0.8
 
             function loadValue() {
-                if (!captureGroup) return;
-                for (var i = 0; i < captureGroup.children.length; i++) {
-                    var row = captureGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
+                function triggerLoad(item) {
+                    if (!item) return;
+                    if (item.loadValue) item.loadValue();
+                    if (item.children) {
+                        for (var i = 0; i < item.children.length; i++) triggerLoad(item.children[i]);
+                    }
+                }
+                triggerLoad(ssGroup);
+            }
+
+            Column {
+                id: ssGroup
+                anchors.fill: parent
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
+
+                // 1. Multi-Monitor Screenshots
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "monitor_weight"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "multiMonitorScreenshot"
+                        label: "Multi-Monitor Screenshots"; description: "Use slurp and grim for interactive screenshots across displays"
+                        defaultValue: false
+                    }
+                }
+
+                // 2. Save to Disk
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "save"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "saveToDisk"
+                        label: "Save to Disk"; description: "Save screenshot to disk (disable to only save to clipboard)"
+                        defaultValue: true
+                    }
+                }
+
+                // 3. Copy to Clipboard
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "copyToClipboard"
+                        label: "Copy to Clipboard"; description: "Copy the resulting image to your clipboard"
+                        defaultValue: true
+                    }
+                }
+
+                // 4. Image Format
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "image"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Image Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Format to save the screenshot in"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SelectionSettingV2 {
+                        width: parent.width; settingKey: "format"; label: ""; description: ""
+                        options: [
+                            {label: "PNG (Lossless)", value: "png"},
+                            {label: "JPEG", value: "jpg"},
+                            {label: "PPM (Raw)", value: "ppm"}
+                        ]
+                        defaultValue: "png"
+                    }
+                }
+
+                // 5. JPEG Quality
+                SliderSettingV2 {
+                    width: parent.width
+                    settingKey: "quality"
+                    label: "JPEG Quality"
+                    description: "Quality from 1-100% (only applies if format is JPEG)"
+                    defaultValue: "90"
+                    minVal: 1
+                    maxVal: 100
+                    isFloatBackend: false
+                    showPercentage: true
+                    iconName: "high_quality"
+                }
+
+                // 6. Screenshot Custom Path
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Screenshot Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Absolute path to save screenshots. Leave empty for default."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    StringSetting { width: parent.width; settingKey: "customPath"; label: ""; description: ""; placeholder: root.defaultPath; defaultValue: "" }
+                }
+
+                // 7. Screenshot Editor
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "output"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "stdout"
+                        label: "Screenshot Editor"; description: "Master switch: Enable external editor integration"
+                        defaultValue: false
+                    }
+                }
+
+                // 8. Enable Editor Shortcut
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "keyboard"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "enableEditorShortcut"
+                        label: "Enable Editor Shortcut"; description: "Allow using the secondary shortcut to trigger the editor"
+                        defaultValue: true
+                    }
+                }
+
+                // 9. Swap Shortcuts
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "swap_horiz"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "swapCaptureKeys"
+                        label: "Swap Shortcuts"; description: "Space: Edit, Ctrl+Space: Capture"
+                        defaultValue: false
+                    }
+                }
+
+                // 10. Editor Pipe Command
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "input"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Editor Pipe Command"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Command after ' | ' (e.g. swappy -f -)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    StringSetting { width: parent.width; settingKey: "pipeCommand"; label: ""; description: ""; placeholder: "swappy -f -"; defaultValue: "" }
+                }
+            }
+        }
+
+        // ====================================================================
+        // CONTAINER 2: VIDEO SETTINGS ALL
+        // ====================================================================
+        Rectangle {
+            id: videoCard
+            width: parent.width
+            height: videoCol.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+            clip: true
+
+            Behavior on height {
+                NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
+            }
+
+            function loadValue() {
+                function triggerLoad(item) {
+                    if (!item) return;
+                    if (item.loadValue) item.loadValue();
+                    if (item.children) {
+                        for (var i = 0; i < item.children.length; i++) triggerLoad(item.children[i]);
+                    }
+                }
+                triggerLoad(videoCol);
+            }
+
+            Column {
+                id: videoCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
+
+                // 1. Video Format
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "videocam"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Video Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Container format for recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SelectionSettingV2 {
+                        width: parent.width; settingKey: "videoFormat"; label: ""; description: ""
+                        options: [
+                            {label: "MKV (Matroska)", value: "mkv"},
+                            {label: "MP4 (MPEG-4)", value: "mp4"},
+                            {label: "FLV (Flash)", value: "flv"}
+                        ]
+                        defaultValue: "mkv"
+                    }
+                }
+
+                // 2. Record Audio
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "volume_up"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "recordAudio"
+                        label: "Record Audio"; description: "Include system audio in the recording"
+                        defaultValue: true
+                    }
+                }
+
+                // 3. Record Microphone
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        id: videoMicToggle
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "recordMic"
+                        label: "Record Microphone"; description: "Include the default microphone input in the recording"
+                        defaultValue: false
+                    }
+                }
+
+                // 4. Microphone Device
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    visible: videoMicToggle.value
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Microphone Device"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Microphone to record from"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SelectionSettingV2 {
+                        width: parent.width; settingKey: "videoMic"; label: ""; description: ""
+                        options: root.micList; defaultValue: "default"
+                    }
+                }
+
+                // 5. Video FPS
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "speed"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Video FPS"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Frames per second for recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SelectionSettingV2 {
+                        width: parent.width; settingKey: "videoFPS"; label: ""; description: ""
+                        options: [
+                            {label: "24 FPS", value: "24"},
+                            {label: "30 FPS", value: "30"},
+                            {label: "60 FPS", value: "60"}
+                        ]
+                        defaultValue: "60"
+                    }
+                }
+
+                // 6. Video Quality
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Video Quality"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Quality preset for video recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SelectionSettingV2 {
+                        width: parent.width; settingKey: "videoQuality"; label: ""; description: ""
+                        options: [
+                            {label: "Medium", value: "medium"},
+                            {label: "High", value: "high"},
+                            {label: "Very High", value: "very_high"},
+                            {label: "Ultra", value: "ultra"}
+                        ]
+                        defaultValue: "medium"
+                    }
+                }
+
+                // 7. Target Monitor
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "desktop_windows"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Target Monitor"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Monitor to record when in multi-monitor setup"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    SelectionSettingV2 {
+                        width: parent.width; settingKey: "videoMonitor"; label: ""; description: ""
+                        options: root.monitorList; defaultValue: "Focused"
+                    }
+                }
+
+                // 8. Video Custom Path
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Video Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Absolute path to save recordings. Leave empty for ~/Videos."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    StringSetting { width: parent.width; settingKey: "videoCustomPath"; label: ""; description: ""; placeholder: "~/Videos"; defaultValue: "" }
+                }
+
+                // 9. Video Filename
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Video Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Override the generated recording filename. Extension is added if omitted."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
+                    StringSetting { width: parent.width; settingKey: "videoFilename"; label: ""; description: ""; placeholder: "recording_2026-05-15_14-30-00.mkv"; defaultValue: "" }
+                }
+
+                // 10. Show Advanced Settings (LAST item in Video Settings)
+                Row {
+                    width: parent.width; spacing: Theme.spacingM
+                    DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        id: advancedVideoToggle
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "showAdvancedSettings"
+                        label: "Show Advanced Settings"; description: "Enable advanced codec options for video recording"
+                        defaultValue: false
+                    }
+                }
+
+                // 11. Animated Advanced Video Settings Sub-Container
+                Column {
+                    id: videoAdvancedSubContent
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: opacity > 0
+                    opacity: advancedVideoToggle.value ? 1.0 : 0.0
+                    transform: Translate {
+                        y: advancedVideoToggle.value ? 0 : -10
+                        Behavior on y { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
+                    }
+
+                    // Video Codec
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "settings_applications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Video Codec"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Hardware video encoder for recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            width: parent.width; settingKey: "videoCodec"; label: ""; description: ""
+                            options: [
+                                {label: "Auto (Recommended)", value: "auto"},
+                                {label: "AV1", value: "av1"},
+                                {label: "AV1 (10 Bit)", value: "av1_10bit"},
+                                {label: "AV1 (HDR)", value: "av1_hdr"},
+                                {label: "H.264 SE (Not Recommended)", value: "h264"}
+                            ]
+                            defaultValue: "auto"
+                        }
+                    }
+
+                    // Audio Codec
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Audio Codec"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Audio encoder for recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            width: parent.width; settingKey: "audioCodec"; label: ""; description: ""
+                            options: [
+                                {label: "Opus (Recommended)", value: "opus"},
+                                {label: "AAC", value: "aac"}
+                            ]
+                            defaultValue: "aac"
                         }
                     }
                 }
             }
+        }
+
+        // ====================================================================
+        // CONTAINER 3: AUDIO SETTINGS ALL
+        // ====================================================================
+        Rectangle {
+            id: audioCard
+            width: parent.width
+            height: audioCol.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+            clip: true
+
+            Behavior on height {
+                NumberAnimation { duration: 300; easing.type: Easing.InOutQuad }
+            }
+
+            function loadValue() {
+                function triggerLoad(item) {
+                    if (!item) return;
+                    if (item.loadValue) item.loadValue();
+                    if (item.children) {
+                        for (var i = 0; i < item.children.length; i++) triggerLoad(item.children[i]);
+                    }
+                }
+                triggerLoad(audioCol);
+            }
 
             Column {
-                id: captureGroup
-                anchors.fill: parent
+                id: audioCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: Theme.spacingM
                 spacing: Theme.spacingM
 
                 Row {
                     width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "camera"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    DankIcon { name: "graphic_eq"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                    ToggleSetting {
+                        id: enableAudioToggle
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "enableAudioRecorder"
+                        label: "Enable Audio Recorder"; description: "Enable standalone audio recording feature in toolbar mode selection"
+                        defaultValue: false
+                    }
+                }
+
+                Column {
+                    id: audioSubContent
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: opacity > 0
+                    opacity: enableAudioToggle.value ? 1.0 : 0.0
+                    transform: Translate {
+                        y: enableAudioToggle.value ? 0 : -10
+                        Behavior on y { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: 250; easing.type: Easing.InOutQuad }
+                    }
+
+                    // 1. Audio Format
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Audio Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Container format for audio recordings (mp3, opus, flac, wav, m4a, ogg)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            width: parent.width; settingKey: "audioFormat"; label: ""; description: ""
+                            options: [
+                                {label: "MP3 (MPEG Layer III)", value: "mp3"},
+                                {label: "Opus (Ogg Opus)", value: "opus"},
+                                {label: "FLAC (Lossless)", value: "flac"},
+                                {label: "WAV (Uncompressed)", value: "wav"},
+                                {label: "AAC (M4A)", value: "m4a"},
+                                {label: "OGG (Vorbis)", value: "ogg"}
+                            ]
+                            defaultValue: "mp3"
+                        }
+                    }
+
+                    // 2. Audio Source Mode
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Audio Source Mode"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Select what to capture in standalone audio recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            id: audioSourceSetting
+                            width: parent.width; settingKey: "audioSource"; label: ""; description: ""
+                            options: [
+                                {label: "Microphone Only", value: "mic"},
+                                {label: "System Audio Only", value: "system"},
+                                {label: "Microphone + System Audio", value: "both"}
+                            ]
+                            defaultValue: "mic"
+                        }
+                    }
+
+                    // 3. Microphone Device
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        visible: audioSourceSetting.value === "mic" || audioSourceSetting.value === "both" || !audioSourceSetting.value
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Microphone Device"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Microphone to record from"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            width: parent.width; settingKey: "videoMic"; label: ""; description: ""
+                            options: root.micList; defaultValue: "default"
+                        }
+                    }
+
+                    // 4. Audio Custom Path
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Audio Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Absolute path to save audio recordings. Leave empty for ~/Music."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        StringSetting { width: parent.width; settingKey: "audioCustomPath"; label: ""; description: ""; placeholder: "~/Music"; defaultValue: "" }
+                    }
+
+                    // 5. Audio Filename
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Audio Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Override generated audio filename template. Extension is added if omitted."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        StringSetting { width: parent.width; settingKey: "audioFilename"; label: ""; description: ""; placeholder: "audio_2026-05-15_14-30-00.mp3"; defaultValue: "" }
+                    }
+
+                    // 6. Audio Quality / Bitrate
+                    Column {
+                        width: parent.width; spacing: Theme.spacingXS
+                        Row {
+                            width: parent.width; spacing: Theme.spacingM
+                            DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                            Column {
+                                width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                                StyledText { text: "Audio Quality / Bitrate"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Bitrate quality preset for standalone audio recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            width: parent.width; settingKey: "audioBitrate"; label: ""; description: ""
+                            options: [
+                                {label: "Standard (128 kbps)", value: "128k"},
+                                {label: "High (192 kbps)", value: "192k"},
+                                {label: "Very High (256 kbps)", value: "256k"},
+                                {label: "Maximum (320 kbps)", value: "320k"}
+                            ]
+                            defaultValue: "192k"
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====================================================================
+        // CONTAINER 4: GENERAL SETTINGS
+        // ====================================================================
+        Rectangle {
+            width: parent.width
+            height: generalGroup.implicitHeight + Theme.spacingM * 2
+            color: Theme.surfaceContainer
+            radius: Theme.cornerRadius
+            border.color: Theme.outline
+            border.width: 1
+            opacity: 0.8
+
+            function loadValue() {
+                function triggerLoad(item) {
+                    if (!item) return;
+                    if (item.loadValue) item.loadValue();
+                    if (item.children) {
+                        for (var i = 0; i < item.children.length; i++) triggerLoad(item.children[i]);
+                    }
+                }
+                triggerLoad(generalGroup);
+            }
+
+            Column {
+                id: generalGroup
+                anchors.fill: parent
+                anchors.margins: Theme.spacingM
+                spacing: Theme.spacingM
+
+                // 1. Capture Mode (Moved from Screenshot Settings)
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "camera"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Capture Mode"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Choose default capture mode (Interactive, Fullscreen, Monitor, Window, All)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
+                        }
+                    }
                     SelectionSettingV2 {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "captureMode"
-                        label: "Screenshot Mode"
-                        description: "Choose what to capture"
+                        width: parent.width; settingKey: "captureMode"; label: ""; description: ""
                         options: [
                             {label: "Interactive (Region)", value: "interactive"},
                             {label: "Focused Screen", value: "full"},
@@ -189,97 +821,20 @@ PluginSettings {
                     }
                 }
 
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "monitor_weight"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "multiMonitorScreenshot"
-                        label: "Multi-Monitor Screenshots"
-                        description: "Use slurp and grim for interactive screenshots across displays"
-                        defaultValue: false
-                    }
-                }
-            }
-        }
-
-        // --- Output Settings ---
-        Rectangle {
-            width: parent.width
-            height: outputGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!outputGroup) return;
-                for (var i = 0; i < outputGroup.children.length; i++) {
-                    var row = outputGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
+                // 2. Capture Delay (Moved from Screenshot Settings)
+                Column {
+                    width: parent.width; spacing: Theme.spacingXS
+                    Row {
+                        width: parent.width; spacing: Theme.spacingM
+                        DankIcon { name: "timer"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
+                        Column {
+                            width: parent.width - 22 - Theme.spacingM; spacing: Theme.spacingXS
+                            StyledText { text: "Capture Delay"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Delay in seconds before capturing (non-interactive modes only)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
                         }
                     }
-                }
-            }
-
-            Column {
-                id: outputGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "image"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     SelectionSettingV2 {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "format"
-                        label: "Image Format"
-                        description: "Format to save the screenshot in"
-                        options: [
-                            {label: "PNG (Lossless)", value: "png"},
-                            {label: "JPEG", value: "jpg"},
-                            {label: "PPM (Raw)", value: "ppm"}
-                        ]
-                        defaultValue: "png"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "JPEG Quality"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Quality from 1-100 (only applies if format is JPEG)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                        StringSetting { width: parent.width; settingKey: "quality"; label: ""; description: ""; defaultValue: "90" }
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Absolute path to save screenshots. Leave empty for default."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                        StringSetting { width: parent.width; settingKey: "customPath"; label: ""; description: ""; placeholder: root.defaultPath; defaultValue: "" }
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "timer"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "delaySeconds"
-                        label: "Capture Delay"
-                        description: "Delay in seconds before capturing (non-interactive modes only)"
+                        width: parent.width; settingKey: "delaySeconds"; label: ""; description: ""
                         options: [
                             {label: "No Delay", value: "0"},
                             {label: "3 Seconds", value: "3"},
@@ -289,556 +844,95 @@ PluginSettings {
                         defaultValue: "0"
                     }
                 }
-            }
-        }
 
-        // --- Video Settings ---
-        Rectangle {
-            width: parent.width
-            height: videoGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!videoGroup) return;
-                for (var i = 0; i < videoGroup.children.length; i++) {
-                    var row = videoGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                id: videoGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "videocam"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "videoFormat"
-                        label: "Video Format"
-                        description: "Container format for recordings"
-                        options: [
-                            {label: "MKV (Matroska)", value: "mkv"},
-                            {label: "MP4 (MPEG-4)", value: "mp4"},
-                            {label: "FLV (Flash)", value: "flv"}
-                        ]
-                        defaultValue: "mkv"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "recordAudio"
-                        label: "Record Audio"
-                        description: "Include system audio in the recording"
-                        defaultValue: true
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "recordMic"
-                        label: "Record Microphone"
-                        description: "Include the default microphone input in the recording"
-                        defaultValue: false
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "speed"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "videoFPS"
-                        label: "Video FPS"
-                        description: "Frames per second for recording"
-                        options: [
-                            {label: "24 FPS", value: "24"},
-                            {label: "30 FPS", value: "30"},
-                            {label: "60 FPS", value: "60"}
-                        ]
-                        defaultValue: "60"
-                    }
-                }
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "tune"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showAdvancedSettings"
-                        label: "Show Advanced Settings"
-                        description: "Enable advanced codec options in the capture toolbar"
-                        defaultValue: false
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "high_quality"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
-                        settingKey: "videoQuality"
-                        label: "Video Quality"
-                        description: "Quality preset for video recording"
-                        options: [
-                            {label: "Medium", value: "medium"},
-                            {label: "High", value: "high"},
-                            {label: "Very High", value: "very_high"},
-                            {label: "Ultra", value: "ultra"}
-                        ]
-                        defaultValue: "medium"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
-                    DankIcon { name: "settings_applications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
-                        settingKey: "videoCodec"
-                        label: "Video Codec"
-                        description: "Hardware video encoder for recording"
-                        options: [
-                            {label: "Auto (Recomended)", value: "auto"},
-                            {label: "AV1", value: "av1"},
-                            {label: "AV1 (10 Bit)", value: "av1_10bit"},
-                            {label: "AV1 (HDR)", value: "av1_hdr"},
-                            {label: "H.264 SE (Not Recomended)", value: "h264"}
-                        ]
-                        defaultValue: "auto"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.showAdvancedSettings === true
-                    DankIcon { name: "audio_file"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
-                        settingKey: "audioCodec"
-                        label: "Audio Codec"
-                        description: "Audio encoder for recording"
-                        options: [
-                            {label: "Opus (Recomended)", value: "opus"},
-                            {label: "AAC", value: "aac"}
-                        ]
-                        defaultValue: "aac"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.captureMode === "monitor"
-                    DankIcon { name: "desktop_windows"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
-                        settingKey: "videoMonitor"
-                        label: "Target Monitor"
-                        description: "Monitor to record when in multi-monitor setup"
-                        options: root.monitorList
-                        defaultValue: "Focused"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
-                    DankIcon { name: "mic"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    SelectionSettingV2 {
-                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
-                        settingKey: "videoMic"
-                        label: "Microphone Device"
-                        description: "Microphone to record from"
-                        options: root.micList
-                        defaultValue: "default"
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    visible: typeof pluginData !== "undefined" && pluginData.recordMic === true
-                    DankIcon { name: "mic_none"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Rectangle {
-                        width: Math.max(0, parent.width - 22 - Theme.spacingM)
-                        height: 32
-                        radius: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? 16 : 8
-                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMaSettings.containsMouse ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.1) : "transparent")
-                        border.color: Theme.primary || "#38bdf8"
-                        border.width: 1
-                        
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                        Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
-
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 6
-                            DankIcon {
-                                id: testMicIconSettings
-                                name: root.isTestingMic ? (root.isProcessingMic ? "autorenew" : (root.isPlayingMic ? "volume_up" : (root.micTestCountdown > 0 ? "timer" : "stop"))) : "fiber_manual_record"
-                                size: 16
-                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
-                                
-                                transformOrigin: Item.Center
-                                
-                                RotationAnimator on rotation {
-                                    from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: root.isProcessingMic
-                                }
-                                
-                                SequentialAnimation on scale {
-                                    id: pulseAnimSettings
-                                    loops: Animation.Infinite; running: root.isTestingMic && !root.isProcessingMic
-                                    NumberAnimation { to: 1.25; duration: 500; easing.type: Easing.InOutQuad }
-                                    NumberAnimation { to: 1.0; duration: 500; easing.type: Easing.InOutQuad }
-                                }
-                                
-                                onNameChanged: {
-                                    if (!root.isProcessingMic) rotation = 0;
-                                    if (!pulseAnimSettings.running) scale = 1.0;
-                                }
-                            }
-                            StyledText {
-                                text: root.isTestingMic ? (root.isProcessingMic ? "Processing..." : (root.isPlayingMic ? "Playing Test..." : (root.micTestCountdown > 0 ? "Starting in " + root.micTestCountdown + "..." : "Testing (Speak now...)"))) : "Test Microphone"
-                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
-                                font.pixelSize: 12
-                            }
-                        }
-                        
-                        MouseArea {
-                            id: testMicMaSettings
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: {
-                                if (root.isTestingMic) {
-                                    if (root.isPlayingMic || root.isProcessingMic || root.micTestCountdown > 0) {
-                                        micTestProcess.running = false;
-                                        root.isTestingMic = false;
-                                    } else {
-                                        Qt.createQmlObject('import QtQuick 2.15; import DankMaterialShell 1.0; Process { command: ["bash", "-c", "touch /tmp/mic_stop"]; running: true }', testMicMaSettings, "stopSignalProc");
-                                    }
-                                } else {
-                                    root.isTestingMic = true;
-                                    root.isPlayingMic = false;
-                                    root.micTestCountdown = 3;
-                                    var mic = "default";
-                                    // Hack to get the current setting value if available
-                                    if (typeof pluginData !== "undefined" && pluginData.videoMic) {
-                                        mic = pluginData.videoMic;
-                                    }
-                                    var recordCmd = "killall -9 pw-record pw-play 2>/dev/null; rm -f /tmp/mic_test.wav /tmp/mic_stop; ";
-                                    recordCmd += "echo COUNTDOWN 3; sleep 1; echo COUNTDOWN 2; sleep 1; echo COUNTDOWN 1; sleep 1; echo RECORDING; ";
-                                    if (mic && mic !== "default" && mic !== "default_input") {
-                                        recordCmd += "pw-record --target " + mic + " /tmp/mic_test.wav & REC_PID=$!; ";
-                                    } else {
-                                        recordCmd += "pw-record /tmp/mic_test.wav & REC_PID=$!; ";
-                                    }
-                                    recordCmd += "for i in {1..50}; do if [ -f /tmp/mic_stop ]; then break; fi; sleep 0.1; done; ";
-                                    recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 6; echo PLAYING; pw-play /tmp/mic_test.wav; fi";
-                                    micTestProcess.command = ["bash", "-c", recordCmd];
-                                    micTestProcess.running = true;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "folder"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Video Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Absolute path to save recordings. Leave empty for ~/Videos."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                        StringSetting { width: parent.width; settingKey: "videoCustomPath"; label: ""; description: ""; placeholder: "~/Videos"; defaultValue: "" }
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "terminal"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Video Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Override the generated recording filename. Extension is added if omitted."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                        StringSetting { width: parent.width; settingKey: "videoFilename"; label: ""; description: ""; placeholder: "recording_2026-05-15_14-30-00.mkv"; defaultValue: "" }
-                    }
-                }
-            }
-        }
-
-        // --- Editor & Shortcuts ---
-        Rectangle {
-            width: parent.width
-            height: actionsGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!actionsGroup) return;
-                for (var i = 0; i < actionsGroup.children.length; i++) {
-                    var row = actionsGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                id: actionsGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "save"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "saveToDisk"
-                        label: "Save to Disk"
-                        description: "Save screenshot to disk (disable to only save to clipboard)"
-                        defaultValue: true
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "copyToClipboard"
-                        label: "Copy to Clipboard"
-                        description: "Copy the resulting image to your clipboard"
-                        defaultValue: true
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "output"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "stdout"
-                        label: "Screenshot Editor"
-                        description: "Master switch: Enable external editor integration"
-                        defaultValue: false
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "keyboard"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "enableEditorShortcut"
-                        label: "Enable Editor Shortcut"
-                        description: "Allow using the secondary shortcut to trigger the editor"
-                        defaultValue: true
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "swap_horiz"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "swapCaptureKeys"
-                        label: "Swap Shortcuts"
-                        description: "Space: Edit, Ctrl+Space: Capture"
-                        defaultValue: false
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "input"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Editor Pipe Command"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Command after ' | ' (e.g. swappy -f -)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                        StringSetting { width: parent.width; settingKey: "pipeCommand"; label: ""; description: ""; placeholder: "swappy -f -"; defaultValue: "" }
-                    }
-                }
-            }
-        }
-
-        // --- Interface ---
-        Rectangle {
-            width: parent.width
-            height: interfaceGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!interfaceGroup) return;
-                for (var i = 0; i < interfaceGroup.children.length; i++) {
-                    var row = interfaceGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                id: interfaceGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
+                // 3. Show Pointer
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "mouse"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showPointer"
-                        label: "Show Pointer"
-                        description: "Include mouse pointer in the screenshot"
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "showPointer"
+                        label: "Show Pointer"; description: "Include mouse pointer in screenshots and video recordings"
                         defaultValue: true
                     }
                 }
 
+                // 4. Show Notification
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "notifications"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showNotify"
-                        label: "Show Notification"
-                        description: "Show system notification after capture"
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "showNotify"
+                        label: "Show Notification"; description: "Show system notification after capture or recording finishes"
                         defaultValue: true
                     }
                 }
 
+                // 5. Copy Path on Capture
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "content_copy"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "copyPathOnCapture"
-                        label: "Copy Path on Capture"
-                        description: "Automatically copy the file path to clipboard after saving a screenshot or recording"
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "copyPathOnCapture"
+                        label: "Copy Path on Capture"; description: "Automatically copy the file path to clipboard after saving"
                         defaultValue: true
                     }
                 }
 
+                // 6. Show Recording Pill
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "pill"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "showRecPill"
-                        label: "Show Recording Pill"
-                        description: "Show the status pill at the top during recording"
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "showRecPill"
+                        label: "Show Recording Pill"; description: "Show the floating recording status pill during active recordings"
                         defaultValue: true
                     }
                 }
 
+                // 7. Enable Controller Support
                 Row {
                     width: parent.width; spacing: Theme.spacingM
                     DankIcon { name: "stadia_controller"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
                     ToggleSetting {
-                        width: parent.width - 22 - Theme.spacingM
-                        settingKey: "enableController"
-                        label: "Enable Controller Support (BETA)"
-                        description: "Allow gamepads to trigger and navigate the toolbar via IPC"
+                        width: parent.width - 22 - Theme.spacingM; settingKey: "enableController"
+                        label: "Enable Controller Support (BETA)"; description: "Allow gamepads to trigger and navigate the toolbar via IPC"
                         defaultValue: false
                     }
                 }
-            }
-        }
 
-        // --- Styles ---
-        Rectangle {
-            width: parent.width
-            height: interfaceStylesGroup.implicitHeight + Theme.spacingM * 2
-            color: Theme.surfaceContainer
-            radius: Theme.cornerRadius
-            border.color: Theme.outline
-            border.width: 1
-            opacity: 0.8
-
-            function loadValue() {
-                if (!interfaceStylesGroup) return;
-                for (var i = 0; i < interfaceStylesGroup.children.length; i++) {
-                    var row = interfaceStylesGroup.children[i];
-                    if (row && row.children) {
-                        for (var j = 0; j < row.children.length; j++) {
-                            if (row.children[j].loadValue) row.children[j].loadValue();
-                        }
-                    }
-                }
-            }
-
-            Column {
-                id: interfaceStylesGroup
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    DankIcon { name: "opacity"; size: 22; anchors.verticalCenter: parent.verticalCenter; opacity: 0.8 }
-                    Column {
-                        width: parent.width - 22 - Theme.spacingM
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Toolbar Transparency"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                        StyledText { text: "Adjust the background opacity of the toolbar and recording pill"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; width: parent.width; wrapMode: Text.WordWrap }
-                    }
+                // 8. Toolbar Background Opacity
+                SliderSettingV2 {
+                    width: parent.width
+                    settingKey: "toolbarOpacity"
+                    label: "Toolbar Background Opacity"
+                    description: "Adjust background transparency of the capture toolbar (default: 85%)"
+                    defaultValue: "0.85"
+                    minVal: 0.10
+                    maxVal: 1.00
+                    isFloatBackend: true
+                    showPercentage: true
+                    iconName: "opacity"
                 }
 
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    Column {
-                        width: parent.width
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Toolbar Background Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
-                        StringSetting { width: parent.width; settingKey: "toolbarOpacity"; label: ""; description: ""; placeholder: "0.85"; defaultValue: "0.85" }
-                    }
-                }
-
-                Row {
-                    width: parent.width; spacing: Theme.spacingM
-                    Column {
-                        width: parent.width
-                        spacing: Theme.spacingXS
-                        StyledText { text: "Recording Pill Opacity"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceText }
-                        StringSetting { width: parent.width; settingKey: "pillOpacity"; label: ""; description: ""; placeholder: "0.92"; defaultValue: "0.92" }
-                    }
+                // 9. Recording Pill Opacity
+                SliderSettingV2 {
+                    width: parent.width
+                    settingKey: "pillOpacity"
+                    label: "Recording Pill Opacity"
+                    description: "Adjust background transparency of the status pill (default: 92%)"
+                    defaultValue: "0.92"
+                    minVal: 0.10
+                    maxVal: 1.00
+                    isFloatBackend: true
+                    showPercentage: true
+                    iconName: "opacity"
                 }
             }
         }
 
-        // --- Commands & Shortcuts ---
+        // ====================================================================
+        // CONTAINER 5: COMMANDS & SHORTCUTS
+        // ====================================================================
         Rectangle {
             width: parent.width
             height: commandsGroup.implicitHeight + Theme.spacingM * 2
