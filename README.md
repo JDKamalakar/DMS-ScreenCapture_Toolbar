@@ -30,17 +30,26 @@ To ensure all features work correctly, the following dependencies are recommende
 
 - **Dank Material Shell (DMS)** 1.0 or higher.
 - **slurp**: Required for **Interactive Mode** region selection.
+- **grim**: Required for screen capturing.
 - **gpu-screen-recorder**: Required for high-performance video recording.
+- **ffmpeg**: Required for standalone audio recording and encoding.
+- **pipewire**: Required for PipeWire audio capture and interactive microphone testing (`pw-record`/`pw-play`).
+- **pulseaudio-utils**: Required for audio source resolution (`pactl`).
 - **jq**: Required for automatic monitor detection in video mode (parses compositor JSON output).
 
 ```bash
 # Debian/Ubuntu
-sudo apt install slurp gpu-screen-recorder jq
+sudo apt install slurp grim gpu-screen-recorder ffmpeg pipewire pulseaudio-utils jq
 ```
 
 ```bash
 # Fedora
-sudo dnf install slurp gpu-screen-recorder jq
+sudo dnf install slurp grim gpu-screen-recorder ffmpeg pipewire pulseaudio-utils jq
+```
+
+```bash
+# Arch Linux
+sudo pacman -S slurp grim gpu-screen-recorder ffmpeg pipewire libpulse jq
 ```
 
 </div>
