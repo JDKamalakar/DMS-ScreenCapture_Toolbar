@@ -75,6 +75,7 @@ Item {
         spacing: Theme.spacingXS
 
         StyledText {
+            visible: root.label !== ""
             text: root.label
             font.pixelSize: Theme.fontSizeMedium
             font.weight: Font.Medium

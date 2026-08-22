@@ -224,6 +224,25 @@ PluginComponent {
     property string videoMic: (pluginData && pluginData.videoMic) || "default"
     property string lastSavedVideoPath: ""
 
+    // -- Standalone Audio Recorder Settings ----------------------------------
+    property bool enableAudioRecorder: (pluginData && pluginData.enableAudioRecorder != null) ? pluginData.enableAudioRecorder : false
+    onEnableAudioRecorderChanged: {
+        if (!enableAudioRecorder && mediaMode === "audio") {
+            mediaMode = "photo";
+            isVideoMode = false;
+            _save("mediaMode", "photo");
+            _save("isVideoMode", false);
+        }
+    }
+    property string mediaMode: (!enableAudioRecorder && (pluginData && pluginData.mediaMode === "audio")) ? "photo" : ((pluginData && pluginData.mediaMode) ? pluginData.mediaMode : "photo") // "photo", "video", "audio"
+    property string audioFormat: (pluginData && pluginData.audioFormat) || "mp3"
+    property string audioSource: (pluginData && pluginData.audioSource) || "mic" // "mic", "system", "both"
+    property string audioCustomPath: (pluginData && pluginData.audioCustomPath) || ""
+    property string audioFilename: (pluginData && pluginData.audioFilename) || ""
+    property string audioBitrate: (pluginData && pluginData.audioBitrate) || "192k"
+    property string lastSavedAudioPath: ""
+    property bool isAudioRecording: false
+
     property bool isRecording: false
     property bool isPaused: false
     property bool isMicCaptured: false
@@ -525,6 +544,12 @@ PluginComponent {
                 else if (key === "videoMonitor") root.videoMonitor = value;
                 else if (key === "videoMic") root.videoMic = value;
                 else if (key === "showAdvancedSettings") root.showAdvancedSettings = value;
+                else if (key === "enableAudioRecorder") root.enableAudioRecorder = value;
+                else if (key === "audioFormat") root.audioFormat = value;
+                else if (key === "audioSource") root.audioSource = value;
+                else if (key === "audioCustomPath") root.audioCustomPath = value;
+                else if (key === "audioFilename") root.audioFilename = value;
+                else if (key === "audioBitrate") root.audioBitrate = value;
 
                 else if (key === "pipeCommand") root.pipeCommand = value;
                 else if (key === "toolbarOpacity") root.toolbarOpacity = value;
@@ -543,6 +568,10 @@ PluginComponent {
 
     function videoDir() {
         return root.videoCustomPath !== "" ? root.videoCustomPath : "~/Videos";
+    }
+
+    function audioDir() {
+        return root.audioCustomPath !== "" ? root.audioCustomPath : "~/Music";
     }
 
     function expandHome(path) {
@@ -714,6 +743,13 @@ PluginComponent {
         root.copyVideoFile = pluginData.copyVideoFile !== undefined ? pluginData.copyVideoFile : false;
         root.copyPathOnCapture = pluginData.copyPathOnCapture !== undefined ? pluginData.copyPathOnCapture : true;
 
+        root.enableAudioRecorder = pluginData.enableAudioRecorder !== undefined ? pluginData.enableAudioRecorder : false;
+        root.audioFormat = pluginData.audioFormat || "mp3";
+        root.audioSource = pluginData.audioSource || "mic";
+        root.audioCustomPath = pluginData.audioCustomPath || "";
+        root.audioFilename = pluginData.audioFilename || "";
+        root.audioBitrate = pluginData.audioBitrate || "192k";
+
         root.showRecPill = pluginData.showRecPill !== undefined ? pluginData.showRecPill : true;
         root.enableController = pluginData.enableController !== undefined ? pluginData.enableController : false;
         root.showNotify = pluginData.showNotify !== undefined ? pluginData.showNotify : true;
@@ -736,8 +772,8 @@ PluginComponent {
             return;
         }
 
-        // Apply delay for screenshot modes
-        let useDelay = !root.isVideoMode && root.delaySeconds > 0;
+        // Apply delay for capture/recording modes
+        let useDelay = root.delaySeconds > 0;
         
         if (useDelay) {
             root.close(); // Close immediately so it's not in the shot
@@ -760,7 +796,13 @@ PluginComponent {
     function handleCapture(mode, forceEdit = false) {
         if (mode) root.captureMode = mode;
 
-        if (root.isVideoMode) {
+        if (root.mediaMode === "audio") {
+            if (root.isRecording) {
+                root.stopRecording();
+            } else {
+                root.startAudioRecording();
+            }
+        } else if (root.isVideoMode) {
             if (root.isRecording) {
                 root.stopRecording();
             } else {
@@ -961,6 +1003,7 @@ PluginComponent {
         if (!deferRecordingUi) {
             root.isRecording = true;
             root.isPaused = false;
+            root.isAudioRecording = false;
             root.recordingElapsed = 0;
         }
         root.lastSavedVideoPath = path;
@@ -973,37 +1016,142 @@ PluginComponent {
         }
     }
 
+    function startAudioRecording() {
+        let parsedFilename = root.audioFilename !== "" ? root.parseDateTemplate(root.audioFilename) : "";
+        if (parsedFilename !== "" && parsedFilename.indexOf(".") === -1) parsedFilename += "." + root.audioFormat;
+        let filename = parsedFilename !== "" ? parsedFilename : "audio_" + root.filenameTimestamp() + "." + root.audioFormat;
+        let dir = root.expandHome(root.audioDir());
+        let path = dir + "/" + filename;
+
+        let prepends = [];
+        if (root.audioSource === "system" || root.audioSource === "both") {
+            prepends.push("SINK=$(pactl get-default-sink 2>/dev/null); if [ -n \"$SINK\" ]; then SYSTEM_AUDIO=\"$SINK.monitor\"; else SYSTEM_AUDIO=\"default_output\"; fi");
+        }
+        if (root.audioSource === "mic" || root.audioSource === "both") {
+            let mic = root.videoMic && root.videoMic !== "default" ? root.videoMic : "$(pactl get-default-source 2>/dev/null)";
+            prepends.push("MIC_AUDIO=\"" + mic + "\"; if [ -z \"$MIC_AUDIO\" ]; then MIC_AUDIO=\"default_input\"; fi");
+        }
+
+        let audioArgs = [];
+        if (root.audioSource === "system" || root.audioSource === "both") audioArgs.push("$SYSTEM_AUDIO");
+        if (root.audioSource === "mic" || root.audioSource === "both") audioArgs.push("$MIC_AUDIO");
+
+        let prelude = prepends.join("; ");
+        let cmd = "mkdir -p \"" + dir + "\"; ";
+        if (prelude !== "") cmd += prelude + "; ";
+
+        // Build command based on format
+        let fmt = root.audioFormat;
+        let bitrate = root.audioBitrate || "192k";
+
+        if (fmt === "opus" || fmt === "ogg") {
+            cmd += "exec ffmpeg -y ";
+            if (audioArgs.length > 1) {
+                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
+            } else {
+                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
+            }
+            let acodec = fmt === "opus" ? "libopus" : "libvorbis";
+            cmd += "-c:a " + acodec + " -b:a " + bitrate + " \"" + path + "\"";
+        } else if (fmt === "flac") {
+            cmd += "exec ffmpeg -y ";
+            if (audioArgs.length > 1) {
+                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
+            } else {
+                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
+            }
+            cmd += "-c:a flac \"" + path + "\"";
+        } else if (fmt === "wav") {
+            cmd += "exec ffmpeg -y ";
+            if (audioArgs.length > 1) {
+                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
+            } else {
+                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
+            }
+            cmd += "-c:a pcm_s16le \"" + path + "\"";
+        } else if (fmt === "m4a") {
+            cmd += "exec ffmpeg -y ";
+            if (audioArgs.length > 1) {
+                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
+            } else {
+                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
+            }
+            cmd += "-c:a aac -b:a " + bitrate + " \"" + path + "\"";
+        } else {
+            // Default mp3
+            cmd += "exec ffmpeg -y ";
+            if (audioArgs.length > 1) {
+                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
+            } else {
+                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
+            }
+            cmd += "-c:a libmp3lame -b:a " + bitrate + " \"" + path + "\"";
+        }
+
+        root.isRecording = true;
+        root.isAudioRecording = true;
+        root.isPaused = false;
+        root.recordingElapsed = 0;
+        root.lastSavedAudioPath = path;
+        root.close();
+
+        Quickshell.execDetached(["bash", "-c", "sleep 0.3; " + cmd]);
+
+        if (root.showNotify) {
+            Quickshell.execDetached(["notify-send", "Audio Recording Started", "Saving to " + dir]);
+        }
+    }
+
     function stopRecording() {
-        Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
+        if (root.isAudioRecording) {
+            Quickshell.execDetached(["pkill", "-SIGINT", "-f", "ffmpeg"]);
+        } else {
+            Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
+        }
         Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
+        
+        let savedPath = root.isAudioRecording ? root.lastSavedAudioPath : root.lastSavedVideoPath;
+        let isAudio = root.isAudioRecording;
+
         root.isRecording = false;
+        root.isAudioRecording = false;
         root.isPaused = false;
         root.isMicCaptured = false;
         root.isMicMuted = false;
         root.recordingElapsed = 0;
 
-        let cmdStr = "while pgrep -f '[g]pu-screen-recorder' >/dev/null; do sleep 0.2; done; sleep 0.2; ";
-        if (root.copyVideoFile) {
-            cmdStr += "FILE=" + root.shellQuote(root.lastSavedVideoPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"file://$FILE\" | wl-copy -t text/uri-list; ";
+        let procName = isAudio ? "[f]fmpeg" : "[g]pu-screen-recorder";
+        let cmdStr = "while pgrep -f '" + procName + "' >/dev/null; do sleep 0.2; done; sleep 0.2; ";
+        if (!isAudio && root.copyVideoFile) {
+            cmdStr += "FILE=" + root.shellQuote(savedPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"file://$FILE\" | wl-copy -t text/uri-list; ";
         } else if (root.copyPathOnCapture) {
-            cmdStr += "FILE=" + root.shellQuote(root.lastSavedVideoPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"$FILE\" | wl-copy; ";
+            cmdStr += "FILE=" + root.shellQuote(savedPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"$FILE\" | wl-copy; ";
         }
-        if (cmdStr !== "while pgrep -f '[g]pu-screen-recorder' >/dev/null; do sleep 0.2; done; sleep 0.2; ") {
+        if (cmdStr.indexOf("wl-copy") !== -1) {
             Quickshell.execDetached(["bash", "-c", cmdStr]);
         }
 
         if (root.showNotify) {
-            Quickshell.execDetached(["dms", "ipc", "call", "toast", "infoWith", "Recording Stopped", "Saved to " + root.lastSavedVideoPath, "", "screencapture"]);
+            let title = isAudio ? "Audio Recording Stopped" : "Recording Stopped";
+            Quickshell.execDetached(["dms", "ipc", "call", "toast", "infoWith", title, "Saved to " + savedPath, "", "screencapture"]);
         }
     }
 
     function pauseRecording() {
-        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
+        if (root.isAudioRecording) {
+            Quickshell.execDetached(["pkill", "-SIGSTOP", "-f", "ffmpeg"]);
+        } else {
+            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
+        }
         root.isPaused = true;
     }
 
     function resumeRecording() {
-        Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
+        if (root.isAudioRecording) {
+            Quickshell.execDetached(["pkill", "-SIGCONT", "-f", "ffmpeg"]);
+        } else {
+            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
+        }
         root.isPaused = false;
     }
 
@@ -1321,27 +1469,27 @@ PluginComponent {
 
                             SettingToggle {
                                 label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
-                                visible: !root.isVideoMode
+                                visible: root.mediaMode === "photo"
                                 onToggled: { root.copyToClipboard = !root.copyToClipboard; root._save("copyToClipboard", root.copyToClipboard) }
                             }
                             SettingToggle {
                                 label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
-                                visible: !root.isVideoMode
+                                visible: root.mediaMode === "photo"
                                 onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
                             }
                             SettingToggle { 
                                 label: "Screenshot Editor"; iconName: "output"; active: root.stdout
-                                visible: !root.isVideoMode
+                                visible: root.mediaMode === "photo"
                                 onToggled: { root.stdout = !root.stdout; root._save("stdout", root.stdout) }
                             }
                             SettingToggle { 
                                 label: "Enable Editor Shortcut"; iconName: "keyboard"; active: root.enableEditorShortcut
-                                visible: !root.isVideoMode
+                                visible: root.mediaMode === "photo"
                                 onToggled: { root.enableEditorShortcut = !root.enableEditorShortcut; root._save("enableEditorShortcut", root.enableEditorShortcut) }
                             }
                             SettingToggle { 
                                 label: "Swap Shortcuts"; iconName: "swap_horiz"; active: root.swapCaptureKeys
-                                visible: !root.isVideoMode
+                                visible: root.mediaMode === "photo"
                                 onToggled: { root.swapCaptureKeys = !root.swapCaptureKeys; root._save("swapCaptureKeys", root.swapCaptureKeys) }
                             }
                             SettingToggle {
@@ -1361,6 +1509,7 @@ PluginComponent {
                             }
                             SettingToggle {
                                 label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
+                                visible: root.mediaMode === "photo" || root.isVideoMode
                                 onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
                             }
                             SettingToggle {
@@ -1369,9 +1518,72 @@ PluginComponent {
                             }
                             SettingToggle { 
                                 label: "Show Recording Pill"; iconName: "smart_button"; active: root.showRecPill
-                                visible: root.isVideoMode
+                                visible: root.isVideoMode || root.mediaMode === "audio"
                                 isLast: true
                                 onToggled: { root.showRecPill = !root.showRecPill; root._save("showRecPill", root.showRecPill) }
+                            }
+                        }
+                    }
+
+                    // Audio Source Segment (Audio Mode)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: audioSourceCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.mediaMode === "audio"
+
+                        ColumnLayout {
+                            id: audioSourceCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Audio Source"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 34
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: root.settingsExpanded
+                                
+                                Keys.onLeftPressed: {
+                                    var current = audioSourceGroup.currentIndex;
+                                    var newIdx = Math.max(0, current - 1);
+                                    audioSourceGroup.onSelectionChanged(newIdx, true);
+                                }
+                                Keys.onRightPressed: {
+                                    var current = audioSourceGroup.currentIndex;
+                                    var newIdx = Math.min(2, current + 1);
+                                    audioSourceGroup.onSelectionChanged(newIdx, true);
+                                }
+
+                                DankButtonGroup {
+                                    id: audioSourceGroup
+                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
+                                    anchors.centerIn: parent
+                                    scale: 0.95; transformOrigin: Item.Center
+                                    model: ["System", "Mic", "Both"]
+                                    currentIndex: {
+                                        if (root.audioSource === "system") return 0;
+                                        if (root.audioSource === "both") return 2;
+                                        return 1;
+                                    }
+                                    onSelectionChanged: function(idx, sel) {
+                                        if (sel) {
+                                            var sources = ["system", "mic", "both"];
+                                            root.audioSource = sources[idx];
+                                            root._save("audioSource", root.audioSource);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1394,31 +1606,47 @@ PluginComponent {
 
                             RowLayout {
                                 spacing: 12
-                                DankIcon { name: root.isVideoMode ? "movie" : "image"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: root.isVideoMode ? "Video Format" : "Image Format"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                DankIcon { name: root.mediaMode === "audio" ? "audio_file" : (root.isVideoMode ? "movie" : "image"); size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: root.mediaMode === "audio" ? "Audio Format" : (root.isVideoMode ? "Video Format" : "Image Format"); font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
                             Rectangle {
-                                Layout.fillWidth: true; height: 34
+                                Layout.fillWidth: true; height: 36
                                 color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
                                 radius: 8
                                 activeFocusOnTab: visible
                                 focus: root.settingsExpanded
                                 
                                 Keys.onLeftPressed: {
-                                    var maxIdx = root.isVideoMode ? 2 : 2;
+                                    if (root.mediaMode === "audio") return;
+                                    var maxIdx = 2;
                                     var current = formatGroup.currentIndex;
                                     var newIdx = Math.max(0, current - 1);
                                     formatGroup.onSelectionChanged(newIdx, true);
                                 }
                                 Keys.onRightPressed: {
-                                    var maxIdx = root.isVideoMode ? 2 : 2;
+                                    if (root.mediaMode === "audio") return;
+                                    var maxIdx = 2;
                                     var current = formatGroup.currentIndex;
                                     var newIdx = Math.min(maxIdx, current + 1);
                                     formatGroup.onSelectionChanged(newIdx, true);
                                 }
 
+                                DankDropdown {
+                                    visible: root.mediaMode === "audio"
+                                    width: parent.width; height: 32
+                                    anchors.centerIn: parent
+                                    compactMode: true
+                                    currentValue: root.audioFormat.toUpperCase()
+                                    options: ["MP3", "OPUS", "FLAC", "WAV", "M4A", "OGG"]
+                                    onValueChanged: {
+                                        root.audioFormat = String(value).toLowerCase();
+                                        root._save("audioFormat", root.audioFormat);
+                                    }
+                                }
+
                                 DankButtonGroup {
                                     id: formatGroup
+                                    visible: root.mediaMode !== "audio"
                                     width: parent.width; buttonHeight: 30; minButtonWidth: 54
                                     anchors.centerIn: parent
                                     scale: 0.95; transformOrigin: Item.Center
@@ -1448,6 +1676,233 @@ PluginComponent {
                         }
                     }
 
+                    // Audio Bitrate Segment (Audio Mode)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: audioBitrateCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: root.mediaMode === "audio"
+
+                        ColumnLayout {
+                            id: audioBitrateCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "equalizer"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Audio Bitrate"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 34
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: root.settingsExpanded
+                                
+                                Keys.onLeftPressed: {
+                                    var current = audioBitrateGroup.currentIndex;
+                                    var newIdx = Math.max(0, current - 1);
+                                    audioBitrateGroup.onSelectionChanged(newIdx, true);
+                                }
+                                Keys.onRightPressed: {
+                                    var current = audioBitrateGroup.currentIndex;
+                                    var newIdx = Math.min(3, current + 1);
+                                    audioBitrateGroup.onSelectionChanged(newIdx, true);
+                                }
+
+                                DankButtonGroup {
+                                    id: audioBitrateGroup
+                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
+                                    anchors.centerIn: parent
+                                    scale: 0.95; transformOrigin: Item.Center
+                                    model: ["128k", "192k", "256k", "320k"]
+                                    currentIndex: {
+                                        var bitrates = ["128k", "192k", "256k", "320k"];
+                                        var idx = bitrates.indexOf(root.audioBitrate);
+                                        return idx >= 0 ? idx : 1;
+                                    }
+                                    onSelectionChanged: function(idx, sel) {
+                                        if (sel) {
+                                            var bitrates = ["128k", "192k", "256k", "320k"];
+                                            root.audioBitrate = bitrates[idx];
+                                            root._save("audioBitrate", root.audioBitrate);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Mic Selector & Test Segment
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: micCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        visible: (root.isVideoMode && root.recordMic) || (root.mediaMode === "audio" && (root.audioSource === "mic" || root.audioSource === "both"))
+
+                        ColumnLayout {
+                            id: micCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Mic Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true; height: 36
+                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
+                                radius: 8
+                                activeFocusOnTab: visible
+                                focus: root.settingsExpanded
+                                
+                                Keys.onLeftPressed: {
+                                    var idx = -1;
+                                    for (var i = 0; i < root.micList.length; i++) {
+                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
+                                    }
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.max(0, idx - 1);
+                                    if (root.micList.length > 0) {
+                                        root.videoMic = root.micList[newIdx].value;
+                                        root._save("videoMic", root.videoMic);
+                                    }
+                                }
+                                Keys.onRightPressed: {
+                                    var idx = -1;
+                                    for (var i = 0; i < root.micList.length; i++) {
+                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
+                                    }
+                                    if (idx === -1) idx = 0;
+                                    var newIdx = Math.min(root.micList.length - 1, idx + 1);
+                                    if (root.micList.length > 0) {
+                                        root.videoMic = root.micList[newIdx].value;
+                                        root._save("videoMic", root.videoMic);
+                                    }
+                                }
+
+                                DankDropdown {
+                                    width: parent.width; height: 32
+                                    anchors.centerIn: parent
+                                    compactMode: true
+                                    currentValue: {
+                                        for (var i = 0; i < root.micList.length; i++) {
+                                            if (root.micList[i].value === root.videoMic) return root.micList[i].label;
+                                        }
+                                        return root.videoMic || "Default";
+                                    }
+                                    options: root.micList.map(function(item) { return item.label; })
+                                    onValueChanged: {
+                                        for (var i = 0; i < root.micList.length; i++) {
+                                            if (root.micList[i].label === value) {
+                                                root.videoMic = root.micList[i].value;
+                                                root._save("videoMic", root.videoMic);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Mic Testing Button
+                            Rectangle {
+                                id: testMicRect
+                                Layout.fillWidth: true
+                                height: 32
+                                radius: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? 16 : 8
+                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMa2.containsMouse || testMicRect.activeFocus ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.25) : "transparent")
+                                border.color: Theme.primary || "#38bdf8"
+                                border.width: 1
+                                
+                                focus: root.settingsExpanded
+                                activeFocusOnTab: visible
+                                Keys.onReturnPressed: testMicMa2.clicked(null)
+                                Keys.onSpacePressed: testMicMa2.clicked(null)
+                                
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    DankIcon {
+                                        id: testMicIcon
+                                        name: root.isTestingMic ? (root.isProcessingMic ? "autorenew" : (root.isPlayingMic ? "volume_up" : (root.micTestCountdown > 0 ? "timer" : "stop"))) : "fiber_manual_record"
+                                        size: 16
+                                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
+                                        
+                                        transformOrigin: Item.Center
+                                        
+                                        RotationAnimator on rotation {
+                                            from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: root.isProcessingMic
+                                        }
+                                        
+                                        SequentialAnimation on scale {
+                                            id: pulseAnim
+                                            loops: Animation.Infinite; running: root.isTestingMic && !root.isProcessingMic
+                                            NumberAnimation { to: 1.25; duration: 500; easing.type: Easing.InOutQuad }
+                                            NumberAnimation { to: 1.0; duration: 500; easing.type: Easing.InOutQuad }
+                                        }
+                                        
+                                        onNameChanged: {
+                                            if (!root.isProcessingMic) rotation = 0;
+                                            if (!pulseAnim.running) scale = 1.0;
+                                        }
+                                    }
+                                    StyledText {
+                                        text: root.isTestingMic ? (root.isProcessingMic ? "Processing..." : (root.isPlayingMic ? "Playing Test..." : (root.micTestCountdown > 0 ? "Starting in " + root.micTestCountdown + "..." : "Testing (Speak now...)"))) : "Test Microphone"
+                                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
+                                        font.pixelSize: 12
+                                    }
+                                }
+                                
+                                MouseArea {
+                                    id: testMicMa2
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (root.isTestingMic) {
+                                            if (root.isPlayingMic || root.isProcessingMic || root.micTestCountdown > 0) {
+                                                micTestProcess.running = false;
+                                                root.isTestingMic = false;
+                                            } else {
+                                                Qt.createQmlObject('import QtQuick 2.15; import DankMaterialShell 1.0; Process { command: ["bash", "-c", "touch /tmp/mic_stop"]; running: true }', testMicMa2, "stopSignalProc");
+                                            }
+                                        } else {
+                                            root.isTestingMic = true;
+                                            root.isPlayingMic = false;
+                                            root.micTestCountdown = 3;
+                                            var mic = root.videoMic;
+                                            var recordCmd = "killall -9 pw-record pw-play 2>/dev/null; rm -f /tmp/mic_test.wav /tmp/mic_stop; ";
+                                            recordCmd += "echo COUNTDOWN 3; sleep 1; echo COUNTDOWN 2; sleep 1; echo COUNTDOWN 1; sleep 1; echo RECORDING; ";
+                                            if (mic && mic !== "default" && mic !== "default_input") {
+                                                recordCmd += "pw-record --target " + mic + " /tmp/mic_test.wav & REC_PID=$!; ";
+                                            } else {
+                                                recordCmd += "pw-record /tmp/mic_test.wav & REC_PID=$!; ";
+                                            }
+                                            recordCmd += "for i in {1..50}; do if [ -f /tmp/mic_stop ]; then break; fi; sleep 0.1; done; ";
+                                            recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 6; echo PLAYING; pw-play /tmp/mic_test.wav; fi";
+                                            micTestProcess.command = ["bash", "-c", recordCmd];
+                                            micTestProcess.running = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // JPG Quality Segment
                     Rectangle {
                         Layout.fillWidth: true
@@ -1456,7 +1911,7 @@ PluginComponent {
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
                         border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        visible: root.format === "jpg" && !root.isVideoMode
+                        visible: root.format === "jpg" && root.mediaMode === "photo" && !root.isVideoMode
 
                         ColumnLayout {
                             id: qualityCol
@@ -1503,16 +1958,19 @@ PluginComponent {
                             RowLayout {
                                 spacing: 12
                                 DankIcon { name: "folder"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: root.isVideoMode ? "Video Directory" : "Screenshot Directory"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                StyledText { text: root.mediaMode === "audio" ? "Audio Directory" : (root.isVideoMode ? "Video Directory" : "Screenshot Directory"); font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
                             DankTextField {
                                 Layout.fillWidth: true; height: 28
                                 font.pixelSize: 12
-                                text: root.isVideoMode ? root.videoCustomPath : root.customPath
-                                placeholderText: root.isVideoMode ? "~/Videos" : "~/Pictures/Screenshots"
+                                text: root.mediaMode === "audio" ? root.audioCustomPath : (root.isVideoMode ? root.videoCustomPath : root.customPath)
+                                placeholderText: root.mediaMode === "audio" ? "~/Music" : (root.isVideoMode ? "~/Videos" : "~/Pictures/Screenshots")
                                 activeFocusOnTab: false
                                 onEditingFinished: {
-                                    if (root.isVideoMode) {
+                                    if (root.mediaMode === "audio") {
+                                        root.audioCustomPath = text;
+                                        root._save("audioCustomPath", text);
+                                    } else if (root.isVideoMode) {
                                         root.videoCustomPath = text;
                                         root._save("videoCustomPath", text);
                                     } else {
@@ -1805,169 +2263,7 @@ PluginComponent {
 
 
 
-                    // Mic Selector Segment
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: micCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
-                        border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        visible: root.isVideoMode && root.recordMic
 
-                        ColumnLayout {
-                            id: micCol
-                            anchors.left: parent.left; anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 12; anchors.rightMargin: 12
-                            spacing: 8
-
-                            RowLayout {
-                                spacing: 12
-                                DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Mic Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 36
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    var idx = -1;
-                                    for (var i = 0; i < root.micList.length; i++) {
-                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
-                                    }
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.max(0, idx - 1);
-                                    if (root.micList.length > 0) {
-                                        root.videoMic = root.micList[newIdx].value;
-                                        root._save("videoMic", root.videoMic);
-                                    }
-                                }
-                                Keys.onRightPressed: {
-                                    var idx = -1;
-                                    for (var i = 0; i < root.micList.length; i++) {
-                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
-                                    }
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.min(root.micList.length - 1, idx + 1);
-                                    if (root.micList.length > 0) {
-                                        root.videoMic = root.micList[newIdx].value;
-                                        root._save("videoMic", root.videoMic);
-                                    }
-                                }
-
-                                DankDropdown {
-                                    width: parent.width; height: 32
-                                    anchors.centerIn: parent
-                                    compactMode: true
-                                    currentValue: {
-                                        for (var i = 0; i < root.micList.length; i++) {
-                                            if (root.micList[i].value === root.videoMic) return root.micList[i].label;
-                                        }
-                                        return root.videoMic || "Default";
-                                    }
-                                    options: root.micList.map(function(item) { return item.label; })
-                                    onValueChanged: {
-                                        for (var i = 0; i < root.micList.length; i++) {
-                                            if (root.micList[i].label === value) {
-                                                root.videoMic = root.micList[i].value;
-                                                root._save("videoMic", root.videoMic);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Mic Testing Button
-                            Rectangle {
-                                id: testMicRect
-                                Layout.fillWidth: true
-                                height: 32
-                                radius: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? 16 : 8
-                                color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.primary || "#38bdf8") : (testMicMa2.containsMouse || testMicRect.activeFocus ? Theme.withAlpha(Theme.primary || "#38bdf8", 0.25) : "transparent")
-                                border.color: Theme.primary || "#38bdf8"
-                                border.width: 1
-                                
-                                focus: root.settingsExpanded
-                                activeFocusOnTab: visible
-                                Keys.onReturnPressed: testMicMa2.clicked(null)
-                                Keys.onSpacePressed: testMicMa2.clicked(null)
-                                
-                                Behavior on color { ColorAnimation { duration: 150 } }
-                                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
-
-                                Row {
-                                    anchors.centerIn: parent
-                                    spacing: 6
-                                    DankIcon {
-                                        id: testMicIcon
-                                        name: root.isTestingMic ? (root.isProcessingMic ? "autorenew" : (root.isPlayingMic ? "volume_up" : (root.micTestCountdown > 0 ? "timer" : "stop"))) : "fiber_manual_record"
-                                        size: 16
-                                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
-                                        
-                                        transformOrigin: Item.Center
-                                        
-                                        RotationAnimator on rotation {
-                                            from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: root.isProcessingMic
-                                        }
-                                        
-                                        SequentialAnimation on scale {
-                                            id: pulseAnim
-                                            loops: Animation.Infinite; running: root.isTestingMic && !root.isProcessingMic
-                                            NumberAnimation { to: 1.25; duration: 500; easing.type: Easing.InOutQuad }
-                                            NumberAnimation { to: 1.0; duration: 500; easing.type: Easing.InOutQuad }
-                                        }
-                                        
-                                        onNameChanged: {
-                                            if (!root.isProcessingMic) rotation = 0;
-                                            if (!pulseAnim.running) scale = 1.0;
-                                        }
-                                    }
-                                    StyledText {
-                                        text: root.isTestingMic ? (root.isProcessingMic ? "Processing..." : (root.isPlayingMic ? "Playing Test..." : (root.micTestCountdown > 0 ? "Starting in " + root.micTestCountdown + "..." : "Testing (Speak now...)"))) : "Test Microphone"
-                                        color: (root.isTestingMic && !root.isPlayingMic && !root.isProcessingMic) ? (Theme.onPrimary || "#ffffff") : (Theme.primary || "#38bdf8")
-                                        font.pixelSize: 12
-                                    }
-                                }
-                                
-                                MouseArea {
-                                    id: testMicMa2
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    onClicked: {
-                                        if (root.isTestingMic) {
-                                            if (root.isPlayingMic || root.isProcessingMic || root.micTestCountdown > 0) {
-                                                micTestProcess.running = false;
-                                                root.isTestingMic = false;
-                                            } else {
-                                                Qt.createQmlObject('import QtQuick 2.15; import DankMaterialShell 1.0; Process { command: ["bash", "-c", "touch /tmp/mic_stop"]; running: true }', testMicMa2, "stopSignalProc");
-                                            }
-                                        } else {
-                                            root.isTestingMic = true;
-                                            root.isPlayingMic = false;
-                                            root.micTestCountdown = 3;
-                                            var mic = root.videoMic;
-                                            var recordCmd = "killall -9 pw-record pw-play 2>/dev/null; rm -f /tmp/mic_test.wav /tmp/mic_stop; ";
-                                            recordCmd += "echo COUNTDOWN 3; sleep 1; echo COUNTDOWN 2; sleep 1; echo COUNTDOWN 1; sleep 1; echo RECORDING; ";
-                                            if (mic && mic !== "default" && mic !== "default_input") {
-                                                recordCmd += "pw-record --target " + mic + " /tmp/mic_test.wav & REC_PID=$!; ";
-                                            } else {
-                                                recordCmd += "pw-record /tmp/mic_test.wav & REC_PID=$!; ";
-                                            }
-                                            recordCmd += "for i in {1..50}; do if [ -f /tmp/mic_stop ]; then break; fi; sleep 0.1; done; ";
-                                            recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 6; echo PLAYING; pw-play /tmp/mic_test.wav; fi";
-                                            micTestProcess.command = ["bash", "-c", recordCmd];
-                                            micTestProcess.running = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                                         }
                     }
                 }
@@ -2218,22 +2514,29 @@ PluginComponent {
                     Row {
                         spacing: 4
                         ToolbarBtn {
-                            isFirst: true; iconName: "photo_camera"; active: !root.isVideoMode
+                            isFirst: true; iconName: "photo_camera"; active: root.mediaMode === "photo"
                             tooltipText: "Photo Mode"
-                            onClicked: root.isVideoMode = false
+                            onClicked: { root.mediaMode = "photo"; root.isVideoMode = false; }
                         }
                         ToolbarBtn {
-                            isLast: true; iconName: "videocam"; active: root.isVideoMode
+                            isLast: !root.enableAudioRecorder; iconName: "videocam"; active: root.mediaMode === "video"
                             tooltipText: "Video Mode"
-                            onClicked: root.isVideoMode = true
+                            onClicked: { root.mediaMode = "video"; root.isVideoMode = true; }
+                        }
+                        ToolbarBtn {
+                            visible: root.enableAudioRecorder
+                            isLast: true; iconName: "graphic_eq"; active: root.mediaMode === "audio"
+                            tooltipText: "Audio Recorder Mode"
+                            onClicked: { root.mediaMode = "audio"; root.isVideoMode = false; }
                         }
                     }
 
                     Rectangle { width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
 
-                    // Modes
+                    // Modes (Screen region selection not applicable for audio recording)
                     Row {
                         id: modeRow
+                        visible: root.mediaMode !== "audio"
                         spacing: 4
                         ToolbarBtn {
                             isFirst: true
@@ -2276,7 +2579,7 @@ PluginComponent {
                         }
                     }
 
-                    Rectangle { width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
+                    Rectangle { visible: root.mediaMode !== "audio"; width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
 
                     // Actions
                     Row {
@@ -2285,7 +2588,7 @@ PluginComponent {
                         
                         ToolbarBtn { 
                             id: delayBtn
-                            visible: !root.isVideoMode
+                            visible: true
                             isFirst: true
                             iconName: "timer"
                             tooltipText: "Delay: " + root.delaySeconds + "s"
@@ -2337,10 +2640,12 @@ PluginComponent {
                     text: {
                         if (root.controllerConnected && root.enableController) {
                             if (root.isRecording) return "Press (Home/Guide) To Stop Recording";
+                            if (root.mediaMode === "audio") return "Press (A) To Record Audio  •  (B) To Close";
                             if (root.isVideoMode) return "Press (A) To Record  •  (B) To Close";
                             return "Press (A) To Capture  •  (B) To Close";
                         }
                         
+                        if (root.mediaMode === "audio") return "Press Space To Record Audio";
                         if (root.isVideoMode) return "Press Space To Record";
                         
                         let isSwap = !!root.swapCaptureKeys;

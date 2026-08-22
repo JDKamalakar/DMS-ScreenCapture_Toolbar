@@ -3,7 +3,7 @@
   "name": "Screen Capture Toolbar",
   "description": "Premium pill-shaped toolbar for quick screenshots and screen recording",
   "category": "utilities",
-  "version": "2.1.0",
+  "version": "2.4.0",
   "author": "JDKamalakar",
   "icon": "screenshot_region",
   "type": "daemon",
@@ -24,7 +24,10 @@
     "slurp",
     "grim",
     "wl-clipboard",
-    "satty"
+    "satty",
+    "ffmpeg",
+    "pipewire",
+    "pulseaudio-utils"
   ],
   "screenshot": "https://raw.githubusercontent.com/JDKamalakar/DMS-ScreenCapture_Toolbar/refs/heads/main/assets/Screenshot_UI.png",
   "permissions": [
