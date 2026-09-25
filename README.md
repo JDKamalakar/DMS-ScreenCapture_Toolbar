@@ -117,7 +117,8 @@ The toolbar fully supports native gamepad and controller interactions without th
 - **Flexible Recording Audio**: Record system output audio and microphone input independently.
 - **Standalone Audio Recorder**: Optional audio recording capability supporting MP3, Opus, FLAC, WAV, AAC (M4A), and OGG formats with customizable quality presets.
 - **Separate Output Settings**: Screenshots, video recordings, and audio recordings can use independent custom directories and filenames.
-- **Versatile Capture**: Native support for interactive region selection, active monitor focus, full-workspace grabbing, and optional `slurp` + `grim` multi-monitor screenshots.
+- **Versatile Capture**: Native support for interactive region selection, active monitor focus, full-workspace grabbing, scrolling stitched screenshot (`dms screenshot scroll`), and optional `slurp` + `grim` multi-monitor screenshots.
+- **Scrolling Screenshot (Stitched)**: Seamlessly capture tall web pages and document lists with automatic scrolling capture and configurable scroll interval cadence (30–1000ms).
 - **Configurable Capture Delay**: For non-interactive screenshot modes, a **Timer** icon allows choosing 3s, 5s, or 10s delays for capture.
 - **Power Workflow**: Lightning-fast controls with `Spacebar` to trigger captures, `Ctrl+Space` to send a screenshot to the editor, and `Escape` for instant dismissal.
 - **Controller Support** <img src="https://img.shields.io/badge/BETA-0877d2?style=flat" alt="BETA" valign="middle">: Navigate, configure, and capture entirely via gamepads and controllers using native IPC events and zero external mapping software.

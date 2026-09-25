@@ -97,6 +97,7 @@ PluginComponent {
     property int quality: (pluginData && pluginData.quality) || 90
     property string customPath: (pluginData && pluginData.customPath) || ""
     property string filename: (pluginData && pluginData.filename) || ""
+    property int scrollInterval: (pluginData && pluginData.scrollInterval != null) ? pluginData.scrollInterval : 45
     property bool stdout: (pluginData && pluginData.stdout != null) ? pluginData.stdout : false
     property string pipeCommand: (pluginData && pluginData.pipeCommand) || ""
     readonly property string defaultPipeCommand: "{ mkdir -p \"$HOME/Pictures/Screenshots\"; satty --filename - --output-filename \"$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png\"; }"
@@ -447,7 +448,7 @@ PluginComponent {
         function controllerActionRB(): string {
             if (!root.enableController) return "controller disabled";
             if (!overlay.visible) return "toolbar not open";
-            let modes = ["interactive", "monitor", "all"];
+            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "all", "scroll"];
             let idx = modes.indexOf(root.captureMode);
             if (idx === -1) idx = 0;
             idx = (idx + 1) % modes.length;
@@ -459,7 +460,7 @@ PluginComponent {
         function controllerActionLB(): string {
             if (!root.enableController) return "controller disabled";
             if (!overlay.visible) return "toolbar not open";
-            let modes = ["interactive", "monitor", "all"];
+            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "all", "scroll"];
             let idx = modes.indexOf(root.captureMode);
             if (idx === -1) idx = 0;
             idx = (idx - 1 + modes.length) % modes.length;
@@ -533,6 +534,7 @@ PluginComponent {
                 else if (key === "format") root.format = value;
                 else if (key === "quality") root.quality = value;
                 else if (key === "customPath") root.customPath = value;
+                else if (key === "scrollInterval") root.scrollInterval = value;
                 else if (key === "enableEditorShortcut") root.enableEditorShortcut = value;
                 else if (key === "swapCaptureKeys") root.swapCaptureKeys = value;
                 else if (key === "delaySeconds") root.delaySeconds = value;
@@ -728,6 +730,7 @@ PluginComponent {
         root.format = pluginData.format || "png";
         root.quality = pluginData.quality || 90;
         root.customPath = pluginData.customPath || "";
+        root.scrollInterval = pluginData.scrollInterval !== undefined ? pluginData.scrollInterval : 45;
         root.stdout = pluginData.stdout !== undefined ? pluginData.stdout : false;
         root.pipeCommand = pluginData.pipeCommand || "";
         root.recordAudio = pluginData.recordAudio !== undefined ? pluginData.recordAudio : true;
@@ -828,6 +831,11 @@ PluginComponent {
         }
         else if (root.captureMode === "all") dmsStr += " all";
         else if (root.captureMode === "window") dmsStr += " window";
+        else if (root.captureMode === "scroll") {
+            dmsStr += " scroll";
+            let interval = (root.scrollInterval && root.scrollInterval >= 30 && root.scrollInterval <= 1000) ? root.scrollInterval : 45;
+            dmsStr += " --interval " + interval;
+        }
 
         dmsStr += root.showPointer ? " --cursor=on" : " --cursor=off";
         if (!root.saveToDisk) dmsStr += " --no-file";
@@ -1390,7 +1398,7 @@ PluginComponent {
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
 
                 // Position strictly above the right side of the pill
@@ -1453,77 +1461,103 @@ PluginComponent {
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignTop
                             spacing: 12
-                    // Toggles Segment
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: togglesCol.implicitHeight
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
-                        border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        clip: true
 
-                        Column {
-                            id: togglesCol
-                            width: parent.width
+                            // Screenshot Toggles Container
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: photoTogglesCol.implicitHeight
+                                radius: 12
+                                color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                                border.width: 1
+                                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                                clip: true
+                                visible: root.mediaMode === "photo"
 
-                            SettingToggle {
-                                label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.copyToClipboard = !root.copyToClipboard; root._save("copyToClipboard", root.copyToClipboard) }
+                                Column {
+                                    id: photoTogglesCol
+                                    width: parent.width
+
+                                    SettingToggle {
+                                        label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
+                                        isFirst: true
+                                        onToggled: { root.copyToClipboard = !root.copyToClipboard; root._save("copyToClipboard", root.copyToClipboard) }
+                                    }
+                                    SettingToggle {
+                                        label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
+                                        onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
+                                    }
+                                    SettingToggle { 
+                                        label: "Screenshot Editor"; iconName: "output"; active: root.stdout
+                                        onToggled: { root.stdout = !root.stdout; root._save("stdout", root.stdout) }
+                                    }
+                                    SettingToggle { 
+                                        label: "Enable Editor Shortcut"; iconName: "keyboard"; active: root.enableEditorShortcut
+                                        onToggled: { root.enableEditorShortcut = !root.enableEditorShortcut; root._save("enableEditorShortcut", root.enableEditorShortcut) }
+                                    }
+                                    SettingToggle { 
+                                        label: "Swap Shortcuts"; iconName: "swap_horiz"; active: root.swapCaptureKeys
+                                        onToggled: { root.swapCaptureKeys = !root.swapCaptureKeys; root._save("swapCaptureKeys", root.swapCaptureKeys) }
+                                    }
+                                    SettingToggle {
+                                        label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
+                                        onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
+                                    }
+                                    SettingToggle {
+                                        label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                        isLast: true
+                                        onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
+                                    }
+                                }
                             }
-                            SettingToggle {
-                                label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
-                            }
-                            SettingToggle { 
-                                label: "Screenshot Editor"; iconName: "output"; active: root.stdout
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.stdout = !root.stdout; root._save("stdout", root.stdout) }
-                            }
-                            SettingToggle { 
-                                label: "Enable Editor Shortcut"; iconName: "keyboard"; active: root.enableEditorShortcut
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.enableEditorShortcut = !root.enableEditorShortcut; root._save("enableEditorShortcut", root.enableEditorShortcut) }
-                            }
-                            SettingToggle { 
-                                label: "Swap Shortcuts"; iconName: "swap_horiz"; active: root.swapCaptureKeys
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.swapCaptureKeys = !root.swapCaptureKeys; root._save("swapCaptureKeys", root.swapCaptureKeys) }
-                            }
-                            SettingToggle {
-                                label: "Record System Audio"; iconName: "graphic_eq"; active: root.recordAudio
-                                visible: root.isVideoMode
-                                onToggled: { root.recordAudio = !root.recordAudio; root._save("recordAudio", root.recordAudio) }
-                            }
-                            SettingToggle {
-                                label: "Record Microphone"; iconName: "mic"; active: root.recordMic
-                                visible: root.isVideoMode
-                                onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
-                            }
-                            SettingToggle {
-                                label: "Copy Video File"; iconName: "content_copy"; active: root.copyVideoFile
-                                visible: root.isVideoMode
-                                onToggled: { root.copyVideoFile = !root.copyVideoFile; root._save("copyVideoFile", root.copyVideoFile) }
-                            }
-                            SettingToggle {
-                                label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
-                                visible: root.mediaMode === "photo" || root.isVideoMode
-                                onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
-                            }
-                            SettingToggle {
-                                label: "Show Notification"; iconName: "notifications"; active: root.showNotify
-                                onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
-                            }
-                            SettingToggle { 
-                                label: "Show Recording Pill"; iconName: "smart_button"; active: root.showRecPill
+
+                            // Video & Audio Recording Toggles Container
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: videoTogglesCol.implicitHeight
+                                radius: 12
+                                color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                                border.width: 1
+                                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                                clip: true
                                 visible: root.isVideoMode || root.mediaMode === "audio"
-                                isLast: true
-                                onToggled: { root.showRecPill = !root.showRecPill; root._save("showRecPill", root.showRecPill) }
+
+                                Column {
+                                    id: videoTogglesCol
+                                    width: parent.width
+
+                                    SettingToggle {
+                                        label: "Record System Audio"; iconName: "graphic_eq"; active: root.recordAudio
+                                        visible: root.isVideoMode
+                                        isFirst: true
+                                        onToggled: { root.recordAudio = !root.recordAudio; root._save("recordAudio", root.recordAudio) }
+                                    }
+                                    SettingToggle {
+                                        label: "Record Microphone"; iconName: "mic"; active: root.recordMic
+                                        visible: root.isVideoMode
+                                        onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
+                                    }
+                                    SettingToggle {
+                                        label: "Copy Video File"; iconName: "content_copy"; active: root.copyVideoFile
+                                        visible: root.isVideoMode
+                                        onToggled: { root.copyVideoFile = !root.copyVideoFile; root._save("copyVideoFile", root.copyVideoFile) }
+                                    }
+                                    SettingToggle {
+                                        label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
+                                        visible: root.isVideoMode
+                                        onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
+                                    }
+                                    SettingToggle {
+                                        label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                        isFirst: root.mediaMode === "audio"
+                                        onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
+                                    }
+                                    SettingToggle { 
+                                        label: "Show Recording Pill"; iconName: "smart_button"; active: root.showRecPill
+                                        isLast: true
+                                        onToggled: { root.showRecPill = !root.showRecPill; root._save("showRecPill", root.showRecPill) }
+                                    }
+                                }
                             }
-                        }
-                    }
 
                     // Audio Source Segment (Audio Mode)
                     Rectangle {
@@ -1532,7 +1566,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.mediaMode === "audio"
 
                         ColumnLayout {
@@ -1595,7 +1629,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         
                         ColumnLayout {
                             id: formatCol
@@ -1683,7 +1717,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.mediaMode === "audio"
 
                         ColumnLayout {
@@ -1746,7 +1780,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: (root.isVideoMode && root.recordMic) || (root.mediaMode === "audio" && (root.audioSource === "mic" || root.audioSource === "both"))
 
                         ColumnLayout {
@@ -1910,7 +1944,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.format === "jpg" && root.mediaMode === "photo" && !root.isVideoMode
 
                         ColumnLayout {
@@ -1939,6 +1973,46 @@ PluginComponent {
                         }
                     }
 
+                    // Scroll Interval Segment (Scrolling Screenshot)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: scrollIntervalCol.implicitHeight + 24
+                        radius: 12
+                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                        visible: root.mediaMode === "photo" && !root.isVideoMode && root.captureMode === "scroll"
+
+                        ColumnLayout {
+                            id: scrollIntervalCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 12
+                                DankIcon { name: "swap_vert"; size: 18; color: Theme.surfaceVariantText }
+                                StyledText { text: "Scroll Interval (ms)"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankTextField {
+                                Layout.fillWidth: true; height: 28
+                                font.pixelSize: 12
+                                text: root.scrollInterval.toString()
+                                placeholderText: "45"
+                                activeFocusOnTab: false
+                                onEditingFinished: {
+                                    var v = parseInt(text);
+                                    if (!isNaN(v)) {
+                                        v = Math.max(30, Math.min(1000, v));
+                                        root.scrollInterval = v;
+                                        root._save("scrollInterval", v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Custom Directory Segment
                     Rectangle {
                         Layout.fillWidth: true
@@ -1946,7 +2020,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         
                         ColumnLayout {
                             id: pathCol
@@ -1995,7 +2069,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.isVideoMode
 
                         ColumnLayout {
@@ -2060,7 +2134,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.isVideoMode
 
                         ColumnLayout {
@@ -2126,7 +2200,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.isVideoMode && root.showAdvancedSettings
 
                         ColumnLayout {
@@ -2197,7 +2271,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         visible: root.isVideoMode && root.showAdvancedSettings
 
                         ColumnLayout {
@@ -2277,7 +2351,7 @@ PluginComponent {
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
                 
                 anchors.bottom: pillContainer.top
@@ -2339,7 +2413,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         clip: true
                         
                         Column {
@@ -2357,6 +2431,7 @@ PluginComponent {
                                     label: modelData.label; iconName: modelData.icon
                                     active: root.delaySeconds === modelData.value
                                     isOption: true // Shows a checkmark instead of a switch
+                                    isFirst: index === 0
                                     isLast: index === 3
                                     isHighlighted: root.delayExpanded && index === root.delaySelectedIndex
                                     onToggled: {
@@ -2379,7 +2454,7 @@ PluginComponent {
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
                 
                 anchors.bottom: pillContainer.top
@@ -2438,7 +2513,7 @@ PluginComponent {
                         radius: 12
                         color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
                         clip: true
                         
                         Column {
@@ -2452,6 +2527,7 @@ PluginComponent {
                                     iconName: "monitor"
                                     active: root.videoMonitor === modelData.value
                                     isOption: true
+                                    isFirst: index === 0
                                     isLast: index === root.monitorList.length - 1
                                     isHighlighted: root.monitorExpanded && index === root.monitorSelectedIndex
                                     onToggled: {
@@ -2487,7 +2563,7 @@ PluginComponent {
                     radius: height / 2
                     color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                     border.width: 1
-                    border.color: Theme.withAlpha(Theme.outline || "#ffffff", 0.1)
+                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                     
                     layer.enabled: true
                     layer.effect: MultiEffect {
@@ -2568,13 +2644,24 @@ PluginComponent {
                             }
                         }
                         ToolbarBtn {
-                            isLast: true
+                            isLast: root.isVideoMode
                             iconName: "monitor_weight"
                             active: root.captureMode === "all"
                             tooltipText: root.isVideoMode ? "Record All" : "All Screens"
                             onClicked: {
                                 root.captureMode = "all";
                                 root._save("captureMode", "all");
+                            }
+                        }
+                        ToolbarBtn {
+                            visible: !root.isVideoMode
+                            isLast: true
+                            iconName: "swap_vert"
+                            active: root.captureMode === "scroll"
+                            tooltipText: "Scrolling Screenshot"
+                            onClicked: {
+                                root.captureMode = "scroll";
+                                root._save("captureMode", "scroll");
                             }
                         }
                     }
@@ -2631,8 +2718,8 @@ PluginComponent {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 8
-                color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity * 0.8)
-                border.width: 1; border.color: Theme.withAlpha(Theme.outline || "#ffffff", 0.1)
+                color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity * 0.85)
+                border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                 
                 StyledText {
                     id: hintText
@@ -2695,7 +2782,7 @@ PluginComponent {
         property color hoverColor: "transparent"
         property bool isDark: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5)
         signal clicked()
-        width: 52; height: 40
+        width: visible ? 52 : 0; height: visible ? 40 : 0
 
         // Move scale to the root to avoid clipping artifacts
         scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.05 : 1.0)
@@ -2844,15 +2931,22 @@ PluginComponent {
         property string iconName: ""
         property bool active: false
         property bool isOption: false // If true, shows a dot instead of a switch
+        property bool isFirst: false
         property bool isLast: false
         property bool isHighlighted: false
+        property real outerR: 12
+        property real innerR: 4
         signal toggled()
 
         width: parent.width; height: visible ? 44 : 0
         color: (toggleRoot.isHighlighted || toggleRoot.activeFocus) ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : 
                (ma.containsMouse ? Theme.withAlpha(Theme.primary || "#ffffff", 0.08) : "transparent")
         clip: true
-        radius: 12
+        
+        topLeftRadius: isFirst ? outerR : innerR
+        topRightRadius: isFirst ? outerR : innerR
+        bottomLeftRadius: isLast ? outerR : innerR
+        bottomRightRadius: isLast ? outerR : innerR
         
         focus: root.settingsExpanded
         activeFocusOnTab: visible
@@ -2868,8 +2962,6 @@ PluginComponent {
                 root.close();
             }
         }
-        
-        // We do not force active focus here on highlight to prevent focus theft from the global keyboard handler.
 
         // Custom Ripple Effect
         Rectangle {
@@ -2905,20 +2997,20 @@ PluginComponent {
                 scale: 0.85
                 transformOrigin: Item.Right
                 checked: toggleRoot.active
-                onClicked: toggleRoot.toggled() // Ensure clicking the switch itself also works
+                onClicked: toggleRoot.toggled()
             }
             
             // Radio/Option Indicator
             Rectangle {
                 visible: toggleRoot.isOption
-                width: 16; height: 16; radius: 8
+                width: 18; height: 18; radius: 9
                 border.width: 1.5
-                border.color: toggleRoot.active ? Theme.primary : Theme.withAlpha(Theme.outline || "#ffffff", 0.2)
+                border.color: toggleRoot.active ? Theme.primary : Theme.withAlpha(Theme.outline || "#ffffff", 0.3)
                 color: "transparent"
                 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 8; height: 8; radius: 4
+                    width: 10; height: 10; radius: 5
                     color: Theme.primary
                     visible: toggleRoot.active
                 }
@@ -2928,7 +3020,7 @@ PluginComponent {
         Rectangle {
             width: parent.width; height: 1
             anchors.bottom: parent.bottom
-            color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08)
             visible: !toggleRoot.isLast
         }
 
