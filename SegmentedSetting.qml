@@ -12,24 +12,38 @@ Item {
     property var defaultValue: ""
     property var value: defaultValue
 
-    implicitHeight: 40
+    property int columns: 0  // 0 = auto (single row if <= 4, 2 rows if > 4), >0 = explicit columns
+    readonly property int effectiveColumns: root.columns > 0 ? root.columns : (root.options.length > 4 ? Math.ceil(root.options.length / 2) : (root.options.length > 0 ? root.options.length : 1))
+    readonly property int rowCount: Math.ceil((root.options.length || 1) / effectiveColumns)
+
+    implicitHeight: rowCount > 1 ? (rowCount * 40 + (rowCount - 1) * 2) : 40
     width: parent.width
 
     signal changed(var newVal)
 
+    property bool isInitialized: false
+
     function loadValue() {
         const settings = findSettings();
-        if (settings && settings.pluginService) {
+        if (settings) {
             root.value = settings.loadValue(settingKey, defaultValue);
+            isInitialized = true;
+        } else if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
+            root.value = PluginService.loadPluginData("screenCaptureToolbar", settingKey, defaultValue);
+            isInitialized = true;
         }
     }
 
     Component.onCompleted: Qt.callLater(loadValue)
 
     onValueChanged: {
+        if (!isInitialized) return;
         const settings = findSettings();
         if (settings) {
             settings.saveValue(settingKey, root.value);
+        } else if (typeof PluginService !== "undefined" && PluginService && PluginService.savePluginData) {
+            PluginService.savePluginData("screenCaptureToolbar", settingKey, root.value);
+            if (PluginService.setGlobalVar) PluginService.setGlobalVar("screenCaptureToolbar", settingKey, root.value);
         }
     }
 
@@ -42,9 +56,11 @@ Item {
         return null;
     }
 
-    RowLayout {
+    GridLayout {
         anchors.fill: parent
-        spacing: 2
+        columns: root.effectiveColumns
+        columnSpacing: 2
+        rowSpacing: 2
 
         Repeater {
             model: root.options
@@ -53,6 +69,7 @@ Item {
                 id: segItem
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
+                Layout.preferredHeight: 40
                 height: 40
 
                 readonly property var optVal: modelData.value !== undefined ? modelData.value : (modelData.val !== undefined ? modelData.val : modelData)
@@ -62,19 +79,25 @@ Item {
                 readonly property bool isSelected: String(root.value) === String(optVal)
                 readonly property bool isHovered: segItemMa.containsMouse
 
+                readonly property int itemRow: Math.floor(index / root.effectiveColumns)
+                readonly property int itemCol: index % root.effectiveColumns
+
                 Shape {
                     id: segItemBg
                     anchors.fill: parent
 
                     property real innerRadius: 4
                     property real outerRadius: Theme.cornerRadius || 12
-                    property bool isFirst: index === 0
-                    property bool isLast: index === (root.options.length - 1)
 
-                    property real tlr: (isSelected || isHovered) ? (height / 2) : (isFirst ? outerRadius : innerRadius)
-                    property real blr: (isSelected || isHovered) ? (height / 2) : (isFirst ? outerRadius : innerRadius)
-                    property real trr: (isSelected || isHovered) ? (height / 2) : (isLast ? outerRadius : innerRadius)
-                    property real brr: (isSelected || isHovered) ? (height / 2) : (isLast ? outerRadius : innerRadius)
+                    property bool isTopLeft: (root.rowCount > 1) ? (itemRow === 0 && itemCol === 0) : (index === 0)
+                    property bool isTopRight: (root.rowCount > 1) ? (itemRow === 0 && itemCol === root.effectiveColumns - 1) : (index === root.options.length - 1)
+                    property bool isBottomLeft: (root.rowCount > 1) ? (itemRow === root.rowCount - 1 && itemCol === 0) : (index === 0)
+                    property bool isBottomRight: (root.rowCount > 1) ? (itemRow === root.rowCount - 1 && itemCol === root.effectiveColumns - 1) : (index === root.options.length - 1)
+
+                    property real tlr: (isSelected || isHovered) ? (height / 2) : (isTopLeft ? outerRadius : innerRadius)
+                    property real blr: (isSelected || isHovered) ? (height / 2) : (isBottomLeft ? outerRadius : innerRadius)
+                    property real trr: (isSelected || isHovered) ? (height / 2) : (isTopRight ? outerRadius : innerRadius)
+                    property real brr: (isSelected || isHovered) ? (height / 2) : (isBottomRight ? outerRadius : innerRadius)
 
                     property real tlrAnim: tlr; Behavior on tlrAnim { NumberAnimation { duration: 500; easing.type: Easing.OutExpo } }
                     property real trrAnim: trr; Behavior on trrAnim { NumberAnimation { duration: 500; easing.type: Easing.OutExpo } }

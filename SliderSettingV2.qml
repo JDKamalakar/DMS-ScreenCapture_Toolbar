@@ -133,16 +133,24 @@ Item {
             width: parent.width
             spacing: Theme.spacingM
 
-            DankIcon {
-                name: root.iconName
-                size: 22
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 16
+                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                 anchors.verticalCenter: labelCol.verticalCenter
-                opacity: 0.8
+
+                DankIcon {
+                    name: root.iconName
+                    size: 18
+                    color: Theme.primary
+                    anchors.centerIn: parent
+                }
             }
 
             Column {
                 id: labelCol
-                width: parent.width - 22 - Theme.spacingM - (resetBtn.visible ? 36 : 0)
+                width: parent.width - 32 - Theme.spacingM - (resetBtn.visible ? 36 : 0)
                 spacing: Theme.spacingXS
 
                 StyledText {
@@ -163,23 +171,51 @@ Item {
                 }
             }
 
-            // Reset Button on top right (same line as setting name & description header)
-            Item {
+            // Reset Button on top right with container matching NiriDisplaySettings
+            Rectangle {
                 id: resetBtn
                 width: 32
                 height: 32
+                radius: Theme.cornerRadius
                 anchors.verticalCenter: labelCol.verticalCenter
-                visible: root.value !== root.defaultValue
+                color: resetBtnMa.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
+                border.color: resetBtnMa.containsMouse ? Theme.primary : Theme.outline
+                border.width: 1
+                opacity: root.value !== root.defaultValue ? (resetBtnMa.containsMouse ? 1.0 : 0.9) : 0.0
+                visible: opacity > 0
+                scale: resetBtnMa.containsMouse ? 1.1 : 1.0
 
-                DankActionButton {
+                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+
+                DankRipple {
+                    id: resetRip
+                    anchors.fill: parent
+                    cornerRadius: parent.radius
+                    rippleColor: Theme.primary
+                }
+
+                DankIcon {
+                    name: "restart_alt"
+                    size: 18
                     anchors.centerIn: parent
-                    buttonSize: 32
-                    iconName: "restart_alt"
-                    iconSize: 18
-                    iconColor: Theme.surfaceVariantText
+                    color: resetBtnMa.containsMouse ? Theme.primary : Theme.surfaceVariantText
+                    rotation: resetBtnMa.containsMouse ? 90 : 0
+                    Behavior on rotation { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                }
+
+                MouseArea {
+                    id: resetBtnMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         root.resetToDefault();
                     }
+                    onPressed: (m) => resetRip.trigger(m.x, m.y)
                 }
             }
         }

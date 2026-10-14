@@ -448,7 +448,7 @@ PluginComponent {
         function controllerActionRB(): string {
             if (!root.enableController) return "controller disabled";
             if (!overlay.visible) return "toolbar not open";
-            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "all", "scroll"];
+            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
             let idx = modes.indexOf(root.captureMode);
             if (idx === -1) idx = 0;
             idx = (idx + 1) % modes.length;
@@ -460,7 +460,7 @@ PluginComponent {
         function controllerActionLB(): string {
             if (!root.enableController) return "controller disabled";
             if (!overlay.visible) return "toolbar not open";
-            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "all", "scroll"];
+            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
             let idx = modes.indexOf(root.captureMode);
             if (idx === -1) idx = 0;
             idx = (idx - 1 + modes.length) % modes.length;
@@ -473,6 +473,9 @@ PluginComponent {
 
 
     function open() {
+        if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
+            root.enableAudioRecorder = PluginService.loadPluginData("screenCaptureToolbar", "enableAudioRecorder", false);
+        }
         root.settingsExpanded = false;
         root.delayExpanded = false;
         root.monitorExpanded = false;
@@ -513,10 +516,13 @@ PluginComponent {
     }
 
     Connections {
-        target: root.pluginService
+        target: (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService
+        ignoreUnknownSignals: true
         function onGlobalVarChanged(plugin, key) {
-            if (plugin === "screenCaptureToolbar" && root.pluginService) {
-                const value = root.pluginService.getGlobalVar(plugin, key, undefined);
+            if (plugin === "screenCaptureToolbar") {
+                const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService;
+                if (!svc) return;
+                const value = svc.getGlobalVar(plugin, key, undefined);
                 if (value === undefined) return;
 
                 if (key === "copyToClipboard") root.copyToClipboard = value;
@@ -556,6 +562,13 @@ PluginComponent {
                 else if (key === "pipeCommand") root.pipeCommand = value;
                 else if (key === "toolbarOpacity") root.toolbarOpacity = value;
                 else if (key === "pillOpacity") root.pillOpacity = value;
+            }
+        }
+        function onPluginDataChanged(pluginId) {
+            if (pluginId === "screenCaptureToolbar") {
+                const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService;
+                if (!svc || !svc.loadPluginData) return;
+                root.enableAudioRecorder = svc.loadPluginData("screenCaptureToolbar", "enableAudioRecorder", false);
             }
         }
     }
@@ -1193,6 +1206,37 @@ PluginComponent {
     }
 
 
+    // Backdrop / Dim Layer (Separate PanelWindow for blur support in Niri / Wayland compositors)
+    PanelWindow {
+        id: bgOverlay
+        visible: overlay.visible
+        color: "transparent"
+
+        WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar:dim"
+        WlrLayershell.layer: WlrLayershell.Overlay
+        WlrLayershell.exclusiveZone: -1
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+        anchors {
+            top: true
+            left: true
+            right: true
+            bottom: true
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "black"
+            opacity: bgOverlay.visible ? 0.15 : 0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.close()
+            }
+        }
+    }
+
     // -- UI -------------------------------------------------------------------
     PanelWindow {
         id: overlay
@@ -1282,7 +1326,7 @@ PluginComponent {
                     autoClosePopupTimer.restart();
                     event.accepted = true;
                 } else if (event.key === Qt.Key_C) {
-                    let modes = ["interactive", "monitor", "all"];
+                    let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
                     let idx = modes.indexOf(root.captureMode);
                     if (idx === -1) idx = 0;
                     root.captureMode = modes[(idx + 1) % modes.length];
@@ -1315,7 +1359,7 @@ PluginComponent {
                         root.isVideoMode = false;
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
-                        let modes = ["interactive", "monitor", "all"];
+                        let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
                         let idx = modes.indexOf(root.captureMode);
                         if (idx === -1) idx = 0;
                         if (event.key === Qt.Key_Down) idx = (idx + 1) % modes.length;
@@ -1326,17 +1370,6 @@ PluginComponent {
                     }
                 }
             }
-        }
-
-
-
-        // Background Dim
-        Rectangle {
-            id: dim
-            anchors.fill: parent
-            color: "black"
-            opacity: overlay.visible ? 0.15 : 0
-            Behavior on opacity { NumberAnimation { duration: 150 } }
         }
 
         // Local Tooltip with "above icon" logic - inside the window
@@ -2644,6 +2677,16 @@ PluginComponent {
                             }
                         }
                         ToolbarBtn {
+                            visible: !root.isVideoMode
+                            iconName: "picture_in_picture"
+                            active: root.captureMode === "window"
+                            tooltipText: "Window Capture"
+                            onClicked: {
+                                root.captureMode = "window";
+                                root._save("captureMode", "window");
+                            }
+                        }
+                        ToolbarBtn {
                             isLast: root.isVideoMode
                             iconName: "monitor_weight"
                             active: root.captureMode === "all"
@@ -3090,7 +3133,7 @@ PluginComponent {
         screen: targetScreen
         visible: root.isRecording && root.showRecPill
         WlrLayershell.layer: root.recPillDragging ? WlrLayer.Top : WlrLayer.Overlay
-        WlrLayershell.namespace: "dms-rec-pill"
+        WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar:pill"
 
         anchors {
             top: true
@@ -3165,15 +3208,14 @@ PluginComponent {
 
             Behavior on width { NumberAnimation { duration: 450; easing.type: Easing.OutQuint } }
 
-            // Fixed high opacity as requested, removing dependency on settings
-            color: Theme.withAlpha(Theme.surface || "#ffffff", 0.98)
+            color: Theme.withAlpha(Theme.surface || "#252525", root.pillOpacity)
             border.width: root.recPillDragging ? 3 : 1
-            border.color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Qt.rgba(0, 0, 0, 0.1)
+            border.color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
             
             Behavior on border.width { NumberAnimation { duration: 300 } }
             Behavior on border.color { ColorAnimation { duration: 150 } }
             
-            layer.enabled: false // Shadows removed as requested
+            layer.enabled: false
         }
 
         // ---- Collapsed State: [Dot] [Time] [Waveform] [Stop] ----

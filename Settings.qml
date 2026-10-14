@@ -137,178 +137,441 @@ PluginSettings {
         }
     }
 
+    Process {
+        id: launchProcess
+        command: ["dms", "ipc", "call", "screenCaptureToolbar", "toggle"]
+        running: false
+    }
+
+    readonly property real outerR: Theme.cornerRadius || 12
+    readonly property real innerR: 4
+
+    function loadValue(key, def) {
+        if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
+            return PluginService.loadPluginData(root.pluginId, key, def);
+        }
+        return def;
+    }
+
+    function saveValue(key, val) {
+        if (typeof PluginService !== "undefined" && PluginService && PluginService.savePluginData) {
+            PluginService.savePluginData(root.pluginId, key, val);
+            if (PluginService.setGlobalVar) {
+                PluginService.setGlobalVar(root.pluginId, key, val);
+            }
+        }
+    }
+
+    function loadAll() {
+        function triggerLoad(item) {
+            if (!item) return;
+            if (item.loadValue && typeof item.loadValue === "function") {
+                item.loadValue();
+            }
+            if (item.children) {
+                for (var i = 0; i < item.children.length; i++) {
+                    triggerLoad(item.children[i]);
+                }
+            }
+        }
+        triggerLoad(mainSettingsCol);
+    }
+
+    Component.onCompleted: Qt.callLater(loadAll)
+
+    onPluginServiceChanged: {
+        if (pluginService) {
+            loadAll();
+        }
+    }
+
+    Connections {
+        target: PluginService
+        ignoreUnknownSignals: true
+        function onPluginDataChanged(pId) {
+            if (pId === root.pluginId) {
+                root.loadAll();
+            }
+        }
+        function onGlobalVarChanged(pId, varName) {
+            if (pId === root.pluginId) {
+                root.loadAll();
+            }
+        }
+    }
+
     Column {
         id: mainSettingsCol
         width: parent.width
         spacing: Theme.spacingL
 
         function loadValue(key, def) {
-            return PluginService.loadPluginData(root.pluginId, key, def);
+            return root.loadValue(key, def);
         }
 
         function saveValue(key, val) {
-            PluginService.savePluginData(root.pluginId, key, val);
-            PluginService.setGlobalVar(root.pluginId, key, val);
+            root.saveValue(key, val);
         }
 
-        function loadValueInternal() {
-            function triggerLoad(item) {
-                if (!item) return;
-                if (item.loadValue) item.loadValue();
-                if (item.children) {
-                    for (var i = 0; i < item.children.length; i++) triggerLoad(item.children[i]);
-                }
-            }
-            triggerLoad(mainSettingsCol);
-        }
-
-        Component.onCompleted: loadValueInternal()
-
-        // ── About & Plugin Info Card ───────────────────────────
-        StyledRect {
-            width: parent.width
-            radius: Theme.cornerRadius
-            color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.65)
-            border.width: 1
-            border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
-            implicitHeight: aboutCol.implicitHeight + Theme.spacingM * 2
-
-            ColumnLayout {
-                id: aboutCol
-                anchors.fill: parent
-                anchors.margins: Theme.spacingM
-                spacing: Theme.spacingM
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacingM
-
-                    Rectangle {
-                        Layout.preferredWidth: 44
-                        Layout.preferredHeight: 44
-                        radius: Theme.cornerRadius
-                        color: Theme.withAlpha(Theme.primary, 0.12)
-                        border.width: 1
-                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
-
-                        DankIcon {
-                            anchors.centerIn: parent
-                            name: "screenshot_region"
-                            size: 26
-                            color: Theme.primary
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        StyledText {
-                            text: "Screen Capture Toolbar"
-                            font.pixelSize: Theme.fontSizeMedium
-                            font.weight: Font.DemiBold
-                            color: Theme.surfaceText
-                        }
-
-                        StyledText {
-                            text: "Floating pill toolbar for fast screenshots & screen recordings"
-                            font.pixelSize: Theme.fontSizeSmall - 1
-                            color: Theme.surfaceVariantText
-                        }
-                    }
-                }
-
-                StyledText {
-                    Layout.fillWidth: true
-                    text: "Quickly capture interactive regions, full screens, specific monitors, or scrolling screenshots and record system audio/video directly from a floating pill toolbar."
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceVariantText
-                    wrapMode: Text.WordWrap
-                }
-
-                Rectangle {
-                    id: openToolbarBtn
-                    Layout.preferredHeight: 34
-                    Layout.preferredWidth: openToolbarRow.implicitWidth + 24
-                    property bool isHovered: openToolbarMa.containsMouse
-
-                    radius: isHovered ? (height / 2) : Theme.cornerRadius
-                    Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutExpo } }
-
-                    color: isHovered ? Theme.withAlpha(Theme.primary, 0.25) : Theme.withAlpha(Theme.primary, 0.15)
-                    Behavior on color { ColorAnimation { duration: 150 } }
-                    border.width: 1
-                    border.color: isHovered ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3)
-                    Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                    scale: openToolbarMa.pressed ? 0.94 : (isHovered ? 1.02 : 1.0)
-                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
-
-                    DankRipple {
-                        id: openToolbarRip
-                        anchors.fill: parent
-                        cornerRadius: parent.radius
-                        rippleColor: Theme.primary
-                    }
-
-                    RowLayout {
-                        id: openToolbarRow
-                        anchors.centerIn: parent
-                        spacing: 6
-
-                        DankIcon {
-                            name: "open_in_new"
-                            size: 16
-                            color: Theme.primary
-                        }
-
-                        StyledText {
-                            text: "Toggle Toolbar"
-                            font.pixelSize: Theme.fontSizeSmall
-                            font.weight: Font.Medium
-                            color: Theme.primary
-                        }
-                    }
-
-                    MouseArea {
-                        id: openToolbarMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onPressed: (m) => openToolbarRip.trigger(m.x, m.y)
-                        onClicked: Proc.runCommand("toggle-toolbar", ["dms", "ipc", "call", "screenCaptureToolbar", "toggle"], function(){})
-                    }
-                }
-            }
-        }
-
-        // ====================================================================
-        // SECTION 1: SCREENSHOT SETTINGS
+                // ====================================================================
+        // SECTION 1: GENERAL SETTINGS
         // ====================================================================
         Column {
             width: parent.width
             spacing: Theme.spacingM
 
-            StyledText {
-                text: "Screenshot Settings"
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.DemiBold
-                color: Theme.primary
-                padding: 0
+            Row {
+                spacing: Theme.spacingXS
                 leftPadding: Theme.spacingM
+                DankIcon {
+                    name: "tune"
+                    size: 16
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                StyledText {
+                    text: "General Settings"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             Column {
                 width: parent.width
                 spacing: 2
 
-                // 1. Multi-Monitor Screenshots (First)
+                // 1. Capture Delay (Segmented Pill) (First)
+                Rectangle {
+                    width: parent.width
+                    height: genCol2.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    ColumnLayout {
+                        id: genCol2
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "timer"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Capture Delay"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Delay in seconds before capturing (non-interactive modes only)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+
+                        SegmentedSetting {
+                            Layout.fillWidth: true
+                            settingKey: "delaySeconds"
+                            defaultValue: "0"
+                            options: [
+                                { title: "None", value: "0", icon: "timer_off" },
+                                { title: "3s", value: "3", icon: "timer_3" },
+                                { title: "5s", value: "5", icon: "timer_5" },
+                                { title: "10s", value: "10", icon: "timer_10" }
+                            ]
+                        }
+                    }
+                }
+
+                // 2. Show Pointer
+                Rectangle {
+                    width: parent.width
+                    height: genRow3.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: genRow3
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: showPointerToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "mouse"
+                                size: 18
+                                color: showPointerToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Show Pointer"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Include mouse pointer in screenshots and video recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: showPointerToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "showPointer"
+                            readonly property alias value: showPointerToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 3. Show Notification
+                Rectangle {
+                    width: parent.width
+                    height: genRow4.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: genRow4
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: showNotifyToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "notifications"
+                                size: 18
+                                color: showNotifyToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Show Notification"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Show system notification after capture or recording finishes"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: showNotifyToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "showNotify"
+                            readonly property alias value: showNotifyToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 4. Copy Path on Capture (Last)
+                Rectangle {
+                    width: parent.width
+                    height: genRow5.implicitHeight + Theme.spacingM * 2
+                    readonly property real outerR: Theme.cornerRadius
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: genRow5
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: copyPathOnCaptureToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "content_copy"
+                                size: 18
+                                color: copyPathOnCaptureToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Copy Path on Capture"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Automatically copy the file path to clipboard after saving"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: copyPathOnCaptureToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "copyPathOnCapture"
+                            readonly property alias value: copyPathOnCaptureToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====================================================================
+        // SECTION 2: SCREENSHOT SETTINGS
+        // ====================================================================
+        Column {
+            width: parent.width
+            spacing: Theme.spacingM
+
+            Row {
+                spacing: Theme.spacingXS
+                leftPadding: Theme.spacingM
+                DankIcon {
+                    name: "screenshot_region"
+                    size: 16
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                StyledText {
+                    text: "Screenshot Settings"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: 2
+
+                // 1. Capture Mode (Segmented Pill - First) (First)
+                Rectangle {
+                    width: parent.width
+                    height: genCol1.implicitHeight + Theme.spacingM * 2
+                    readonly property real outerR: Theme.cornerRadius
+                    readonly property real innerR: 4
+                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    ColumnLayout {
+                        id: genCol1
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "camera"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Default Capture Mode"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Choose default capture mode (Interactive, Focused, Monitor, Window, All, Scrolling)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+
+                        SegmentedSetting {
+                            Layout.fillWidth: true
+                            columns: 3
+                            settingKey: "captureMode"
+                            defaultValue: "interactive"
+                            options: [
+                                { title: "Region", value: "interactive", icon: "crop" },
+                                { title: "Screen", value: "full", icon: "fullscreen" },
+                                { title: "Monitor", value: "monitor", icon: "desktop_windows" },
+                                { title: "Window", value: "window", icon: "picture_in_picture" },
+                                { title: "All", value: "all", icon: "grid_view" },
+                                { title: "Scroll", value: "scroll", icon: "swap_vert" }
+                            ]
+                        }
+                    }
+                }
+
+                // 2. Multi-Monitor Screenshots
                 Rectangle {
                     width: parent.width
                     height: ssRow1.implicitHeight + Theme.spacingM * 2
                     readonly property real outerR: Theme.cornerRadius
                     readonly property real innerR: 4
-                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
@@ -318,35 +581,48 @@ PluginSettings {
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingM
 
-                        DankIcon { name: "monitor_weight"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "multiMonitorScreenshot"
-                            label: "Multi-Monitor Screenshots"; description: "Use slurp and grim for interactive screenshots across displays"
-                            defaultValue: false
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: multiMonitorScreenshotToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "monitor_weight"
+                                size: 18
+                                color: multiMonitorScreenshotToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
                         }
-                    }
-                }
 
-                // 2. Save to Disk
-                Rectangle {
-                    width: parent.width
-                    height: ssRow2.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Multi-Monitor Screenshots"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Use slurp and grim for interactive screenshots across displays"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
 
-                    RowLayout {
-                        id: ssRow2
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
+                        DankToggle {
+                            id: multiMonitorScreenshotToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "multiMonitorScreenshot"
+                            readonly property alias value: multiMonitorScreenshotToggle.checked
+                            checked: false
 
-                        DankIcon { name: "save"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "saveToDisk"
-                            label: "Save to Disk"; description: "Save screenshot to disk (disable to only save to clipboard)"
-                            defaultValue: true
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
@@ -366,78 +642,347 @@ PluginSettings {
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingM
 
-                        DankIcon { name: "content_copy"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "copyToClipboard"
-                            label: "Copy to Clipboard"; description: "Copy the resulting image to your clipboard"
-                            defaultValue: true
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: copyToClipboardToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "content_copy"
+                                size: 18
+                                color: copyToClipboardToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Copy to Clipboard"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Copy the resulting image to your clipboard"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: copyToClipboardToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "copyToClipboard"
+                            readonly property alias value: copyToClipboardToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
 
-                // 4. Image Format (Segmented Pill)
+                // 4. Save to Disk
                 Rectangle {
                     width: parent.width
-                    height: ssCol4.implicitHeight + Theme.spacingM * 2
+                    height: ssRow2.implicitHeight + Theme.spacingM * 2
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
+                    RowLayout {
+                        id: ssRow2
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: saveToDiskToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "save"
+                                size: 18
+                                color: saveToDiskToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Save to Disk"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Save screenshot to disk (disable to only save to clipboard)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: saveToDiskToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "saveToDisk"
+                            readonly property alias value: saveToDiskToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 5. Screenshot Editor
+                Rectangle {
+                    width: parent.width
+                    height: ssRow8.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: ssRow8
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: stdoutToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "output"
+                                size: 18
+                                color: stdoutToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Screenshot Editor"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Master switch: Enable external editor integration"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: stdoutToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "stdout"
+                            readonly property alias value: stdoutToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 6. Editor Pipe Command
+                Rectangle {
+                    width: parent.width
+                    height: ssCol11.implicitHeight + Theme.spacingM * 2
+                    readonly property real outerR: Theme.cornerRadius
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: stdoutToggle.value ? 1.0 : 0.4
+                    enabled: stdoutToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+
                     ColumnLayout {
-                        id: ssCol4
+                        id: ssCol11
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingS
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "image"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Image Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Format to save the screenshot in"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "input"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
                             }
                         }
-
-                        SegmentedSetting {
-                            Layout.fillWidth: true
-                            settingKey: "format"
-                            defaultValue: "png"
-                            options: [
-                                { title: "PNG (Lossless)", value: "png", icon: "image" },
-                                { title: "JPEG", value: "jpg", icon: "photo" },
-                                { title: "PPM (Raw)", value: "ppm", icon: "raw_on" }
-                            ]
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Editor Pipe Command"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Command after ' | ' (e.g. swappy -f -)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
                         }
+                        StringSetting { Layout.fillWidth: true; settingKey: "pipeCommand"; label: ""; description: ""; placeholder: "swappy -f -"; defaultValue: "" }
                     }
                 }
-
-                // 5. JPEG Quality
+                // 7. Enable Editor Shortcut
                 Rectangle {
                     width: parent.width
-                    height: ssCol5.implicitHeight + Theme.spacingM * 2
+                    height: ssRow9.implicitHeight + Theme.spacingM * 2
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: stdoutToggle.value ? 1.0 : 0.4
+                    enabled: stdoutToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
 
-                    ColumnLayout {
-                        id: ssCol5
+                    RowLayout {
+                        id: ssRow9
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
+                        spacing: Theme.spacingM
 
-                        SliderSettingV2 {
-                            Layout.fillWidth: true; settingKey: "quality"
-                            label: "JPEG Quality"; description: "Quality from 1-100% (only applies if format is JPEG)"
-                            defaultValue: "90"; minVal: 1; maxVal: 100; isFloatBackend: false; showPercentage: true
-                            iconName: "high_quality"
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: enableEditorShortcutToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "keyboard"
+                                size: 18
+                                color: enableEditorShortcutToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Enable Editor Shortcut"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Allow using the secondary shortcut to trigger the editor"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: enableEditorShortcutToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "enableEditorShortcut"
+                            readonly property alias value: enableEditorShortcutToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
 
-                // 6. Scroll Interval
+                // 8. Swap Shortcuts
+                Rectangle {
+                    width: parent.width
+                    height: ssRow10.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: stdoutToggle.value ? 1.0 : 0.4
+                    enabled: stdoutToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                    RowLayout {
+                        id: ssRow10
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: swapCaptureKeysToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "swap_horiz"
+                                size: 18
+                                color: swapCaptureKeysToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Swap Shortcuts"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Space: Edit, Ctrl+Space: Capture"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: swapCaptureKeysToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "swapCaptureKeys"
+                            readonly property alias value: swapCaptureKeysToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 9. Scroll Interval
                 Rectangle {
                     width: parent.width
                     height: ssCol6.implicitHeight + Theme.spacingM * 2
@@ -461,14 +1006,139 @@ PluginSettings {
                     }
                 }
 
-                // 7. Screenshot Custom Path
+                // 10. Image Format (Segmented Pill)
                 Rectangle {
                     width: parent.width
-                    height: ssCol7.implicitHeight + Theme.spacingM * 2
+                    height: ssCol4.implicitHeight + Theme.spacingM * 2
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    ColumnLayout {
+                        id: ssCol4
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "image"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Image Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Format to save the screenshot in"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+
+                        SegmentedSetting {
+                            id: imageFormatSetting
+                            Layout.fillWidth: true
+                            settingKey: "format"
+                            defaultValue: "png"
+                            options: [
+                                { title: "PNG (Lossless)", value: "png", icon: "image" },
+                                { title: "JPEG", value: "jpg", icon: "photo" },
+                                { title: "PPM (Raw)", value: "ppm", icon: "raw_on" }
+                            ]
+                        }
+                    }
+                }
+
+                // 11. JPEG Quality
+                Rectangle {
+                    width: parent.width
+                    height: ssCol5.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: (imageFormatSetting.value === "jpg") ? 1.0 : 0.4
+                    enabled: (imageFormatSetting.value === "jpg")
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                    ColumnLayout {
+                        id: ssCol5
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        SliderSettingV2 {
+                            Layout.fillWidth: true; settingKey: "quality"
+                            label: "JPEG Quality"; description: "Quality from 1-100% (only applies if format is JPEG)"
+                            defaultValue: "90"; minVal: 1; maxVal: 100; isFloatBackend: false; showPercentage: true
+                            iconName: "high_quality"
+                        }
+                    }
+                }
+
+                // 12. Screenshot Filename
+                Rectangle {
+                    width: parent.width
+                    height: ssColFilename.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: saveToDiskToggle.value ? 1.0 : 0.4
+                    enabled: saveToDiskToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                    ColumnLayout {
+                        id: ssColFilename
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                                width: 32
+                                height: 32
+                                radius: 16
+                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                                Layout.alignment: Qt.AlignVCenter
+
+                                DankIcon {
+                                    name: "terminal"
+                                    size: 18
+                                    color: Theme.primary
+                                    anchors.centerIn: parent
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Screenshot Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Override the generated screenshot filename template. Extension is added if omitted."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        StringSetting { Layout.fillWidth: true; settingKey: "filename"; label: ""; description: ""; placeholder: "screenshot_2026-05-15_14-30-00.png"; defaultValue: "" }
+                    }
+                }
+                // 13. Screenshot Custom Path (Last)
+                Rectangle {
+                    width: parent.width
+                    height: ssCol7.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: saveToDiskToggle.value ? 1.0 : 0.4
+                    enabled: saveToDiskToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
 
                     ColumnLayout {
                         id: ssCol7
@@ -478,7 +1148,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "folder"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "folder"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Screenshot Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -488,131 +1171,39 @@ PluginSettings {
                         StringSetting { Layout.fillWidth: true; settingKey: "customPath"; label: ""; description: ""; placeholder: root.defaultPath; defaultValue: "" }
                     }
                 }
-
-                // 8. Screenshot Editor
-                Rectangle {
-                    width: parent.width
-                    height: ssRow8.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: ssRow8
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "output"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "stdout"
-                            label: "Screenshot Editor"; description: "Master switch: Enable external editor integration"
-                            defaultValue: false
-                        }
-                    }
-                }
-
-                // 9. Enable Editor Shortcut
-                Rectangle {
-                    width: parent.width
-                    height: ssRow9.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: ssRow9
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "keyboard"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "enableEditorShortcut"
-                            label: "Enable Editor Shortcut"; description: "Allow using the secondary shortcut to trigger the editor"
-                            defaultValue: true
-                        }
-                    }
-                }
-
-                // 10. Swap Shortcuts
-                Rectangle {
-                    width: parent.width
-                    height: ssRow10.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: ssRow10
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "swap_horiz"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "swapCaptureKeys"
-                            label: "Swap Shortcuts"; description: "Space: Edit, Ctrl+Space: Capture"
-                            defaultValue: false
-                        }
-                    }
-                }
-
-                // 11. Editor Pipe Command (Last)
-                Rectangle {
-                    width: parent.width
-                    height: ssCol11.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    ColumnLayout {
-                        id: ssCol11
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
-
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "input"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Editor Pipe Command"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Command after ' | ' (e.g. swappy -f -)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                            }
-                        }
-                        StringSetting { Layout.fillWidth: true; settingKey: "pipeCommand"; label: ""; description: ""; placeholder: "swappy -f -"; defaultValue: "" }
-                    }
-                }
             }
         }
 
         // ====================================================================
-        // SECTION 2: VIDEO SETTINGS
+        // SECTION 3: VIDEO SETTINGS
         // ====================================================================
         Column {
             width: parent.width
             spacing: Theme.spacingM
 
-            StyledText {
-                text: "Video Settings"
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.DemiBold
-                color: Theme.primary
-                padding: 0
+            Row {
+                spacing: Theme.spacingXS
                 leftPadding: Theme.spacingM
+                DankIcon {
+                    name: "videocam"
+                    size: 16
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                StyledText {
+                    text: "Video Settings"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             Column {
                 width: parent.width
                 spacing: 2
 
-                // 1. Video Format (Segmented Pill - First)
+                // 1. Video Format (Segmented Pill - First) (First)
                 Rectangle {
                     width: parent.width
                     height: vidCol1.implicitHeight + Theme.spacingM * 2
@@ -630,7 +1221,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "videocam"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "videocam"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Video Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -651,88 +1255,7 @@ PluginSettings {
                     }
                 }
 
-                // 2. Record Audio
-                Rectangle {
-                    width: parent.width
-                    height: vidRow2.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: vidRow2
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "volume_up"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "recordAudio"
-                            label: "Record Audio"; description: "Include system audio in the recording"
-                            defaultValue: true
-                        }
-                    }
-                }
-
-                // 3. Record Microphone
-                Rectangle {
-                    width: parent.width
-                    height: vidRow3.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: vidRow3
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "mic"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            id: videoMicToggle
-                            Layout.fillWidth: true; settingKey: "recordMic"
-                            label: "Record Microphone"; description: "Include the default microphone input in the recording"
-                            defaultValue: false
-                        }
-                    }
-                }
-
-                // 4. Microphone Device (Visible if mic enabled)
-                Rectangle {
-                    width: parent.width
-                    height: vidCol4.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: videoMicToggle.value
-
-                    ColumnLayout {
-                        id: vidCol4
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
-
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "mic"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Microphone Device"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Microphone to record from"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                            }
-                        }
-                        SelectionSettingV2 {
-                            Layout.fillWidth: true; settingKey: "videoMic"; label: ""; description: ""
-                            options: root.micList; defaultValue: "default"
-                        }
-                    }
-                }
-
-                // 5. Video FPS (Segmented Pill)
+                // 2. Video FPS (Segmented Pill)
                 Rectangle {
                     width: parent.width
                     height: vidCol5.implicitHeight + Theme.spacingM * 2
@@ -749,7 +1272,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "speed"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "speed"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Video FPS"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -770,7 +1306,7 @@ PluginSettings {
                     }
                 }
 
-                // 6. Video Quality (Segmented Pill)
+                // 3. Video Quality (Segmented Pill)
                 Rectangle {
                     width: parent.width
                     height: vidCol6.implicitHeight + Theme.spacingM * 2
@@ -787,7 +1323,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "high_quality"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "high_quality"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Video Quality"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -809,7 +1358,7 @@ PluginSettings {
                     }
                 }
 
-                // 7. Target Monitor
+                // 4. Target Monitor
                 Rectangle {
                     width: parent.width
                     height: vidCol7.implicitHeight + Theme.spacingM * 2
@@ -826,7 +1375,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "desktop_windows"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "desktop_windows"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Target Monitor"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -840,35 +1402,176 @@ PluginSettings {
                     }
                 }
 
-                // 8. Video Custom Path
+                // 5. Record Audio
                 Rectangle {
                     width: parent.width
-                    height: vidCol8.implicitHeight + Theme.spacingM * 2
+                    height: vidRow2.implicitHeight + Theme.spacingM * 2
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
+                    RowLayout {
+                        id: vidRow2
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: recordAudioToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "volume_up"
+                                size: 18
+                                color: recordAudioToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Record Audio"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Include system audio in the recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: recordAudioToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "recordAudio"
+                            readonly property alias value: recordAudioToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 6. Record Microphone
+                Rectangle {
+                    width: parent.width
+                    height: vidRow3.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: vidRow3
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: videoMicToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "mic"
+                                size: 18
+                                color: videoMicToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Record Microphone"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Include the default microphone input in the recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: videoMicToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "recordMic"
+                            readonly property alias value: videoMicToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 7. Microphone Device (Greyed out if mic disabled)
+                Rectangle {
+                    width: parent.width
+                    height: vidCol4.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: videoMicToggle.value ? 1.0 : 0.4
+                    enabled: videoMicToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+
                     ColumnLayout {
-                        id: vidCol8
+                        id: vidCol4
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingS
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "folder"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Video Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Absolute path to save recordings. Leave empty for ~/Videos."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "mic"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
                             }
                         }
-                        StringSetting { Layout.fillWidth: true; settingKey: "videoCustomPath"; label: ""; description: ""; placeholder: "~/Videos"; defaultValue: "" }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Microphone Device"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Microphone to record from"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            Layout.fillWidth: true; settingKey: "videoMic"; label: ""; description: ""
+                            options: root.micList; defaultValue: "default"
+                        }
                     }
                 }
 
-                // 9. Video Filename
+                // 8. Video Filename
                 Rectangle {
                     width: parent.width
                     height: vidCol9.implicitHeight + Theme.spacingM * 2
@@ -885,7 +1588,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "terminal"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "terminal"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Video Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -896,6 +1612,46 @@ PluginSettings {
                     }
                 }
 
+                // 9. Video Custom Path
+                Rectangle {
+                    width: parent.width
+                    height: vidCol8.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    ColumnLayout {
+                        id: vidCol8
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "folder"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Video Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Absolute path to save recordings. Leave empty for ~/Videos."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        StringSetting { Layout.fillWidth: true; settingKey: "videoCustomPath"; label: ""; description: ""; placeholder: "~/Videos"; defaultValue: "" }
+                    }
+                }
                 // 10. Show Advanced Settings
                 Rectangle {
                     width: parent.width
@@ -915,12 +1671,48 @@ PluginSettings {
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingM
 
-                        DankIcon { name: "tune"; size: 20; color: Theme.primary }
-                        ToggleSetting {
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: advancedVideoToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "tune"
+                                size: 18
+                                color: advancedVideoToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Show Advanced Settings"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Enable advanced codec options for video recording"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
                             id: advancedVideoToggle
-                            Layout.fillWidth: true; settingKey: "showAdvancedSettings"
-                            label: "Show Advanced Settings"; description: "Enable advanced codec options for video recording"
-                            defaultValue: false
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "showAdvancedSettings"
+                            readonly property alias value: advancedVideoToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
@@ -928,12 +1720,16 @@ PluginSettings {
                 // 11. Video Codec (Advanced - Segmented Pill)
                 Rectangle {
                     width: parent.width
-                    height: vidAdvCol1.implicitHeight + Theme.spacingM * 2
+                    height: advancedVideoToggle.value ? (vidAdvCol1.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: advancedVideoToggle.value ? 1.0 : 0.0
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: advancedVideoToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: vidAdvCol1
@@ -943,7 +1739,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "settings_applications"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "settings_applications"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Video Codec"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -953,6 +1762,7 @@ PluginSettings {
 
                         SegmentedSetting {
                             Layout.fillWidth: true
+                            columns: 3
                             settingKey: "videoCodec"
                             defaultValue: "auto"
                             options: [
@@ -966,16 +1776,20 @@ PluginSettings {
                     }
                 }
 
-                // 12. Audio Codec (Advanced - Segmented Pill - Last)
+                // 12. Audio Codec (Advanced - Segmented Pill - Last) (Last)
                 Rectangle {
                     width: parent.width
-                    height: vidAdvCol2.implicitHeight + Theme.spacingM * 2
+                    height: advancedVideoToggle.value ? (vidAdvCol2.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: advancedVideoToggle.value ? 1.0 : 0.0
                     readonly property real outerR: Theme.cornerRadius
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: advancedVideoToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: vidAdvCol2
@@ -985,7 +1799,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "audio_file"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "audio_file"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Audio Codec"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -1008,19 +1835,28 @@ PluginSettings {
         }
 
         // ====================================================================
-        // SECTION 3: STANDALONE AUDIO RECORDER SETTINGS
+        // SECTION 4: STANDALONE AUDIO RECORDER
         // ====================================================================
         Column {
             width: parent.width
             spacing: Theme.spacingM
 
-            StyledText {
-                text: "Standalone Audio Recorder"
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.DemiBold
-                color: Theme.primary
-                padding: 0
+            Row {
+                spacing: Theme.spacingXS
                 leftPadding: Theme.spacingM
+                DankIcon {
+                    name: "graphic_eq"
+                    size: 16
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                StyledText {
+                    text: "Standalone Audio Recorder"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             Column {
@@ -1046,17 +1882,154 @@ PluginSettings {
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingM
 
-                        DankIcon { name: "graphic_eq"; size: 20; color: Theme.primary }
-                        ToggleSetting {
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: enableAudioToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "graphic_eq"
+                                size: 18
+                                color: enableAudioToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Enable Audio Recorder"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Enable standalone audio recording feature in toolbar mode selection"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
                             id: enableAudioToggle
-                            Layout.fillWidth: true; settingKey: "enableAudioRecorder"
-                            label: "Enable Audio Recorder"; description: "Enable standalone audio recording feature in toolbar mode selection"
-                            defaultValue: false
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "enableAudioRecorder"
+                            readonly property alias value: enableAudioToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
 
-                // 2. Audio Format (Segmented Pill)
+                // 2. Audio Source Mode (Segmented Pill)
+                Rectangle {
+                    width: parent.width
+                    height: audCol3.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    visible: enableAudioToggle.value
+
+                    ColumnLayout {
+                        id: audCol3
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "mic"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Audio Source Mode"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Select what to capture in standalone audio recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+
+                        SegmentedSetting {
+                            id: audioSourceSetting
+                            Layout.fillWidth: true
+                            settingKey: "audioSource"
+                            defaultValue: "mic"
+                            options: [
+                                { title: "Mic Only", value: "mic", icon: "mic" },
+                                { title: "System Audio", value: "system", icon: "volume_up" },
+                                { title: "Both", value: "both", icon: "graphic_eq" }
+                            ]
+                        }
+                    }
+                }
+
+                // 3. Microphone Device
+                Rectangle {
+                    width: parent.width
+                    height: audCol4.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    visible: enableAudioToggle.value
+                    opacity: (audioSourceSetting.value === "desktop") ? 0.4 : 1.0
+                    enabled: (audioSourceSetting.value !== "desktop")
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                    ColumnLayout {
+                        id: audCol4
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Theme.spacingM
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "mic"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Microphone Device"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Microphone to record from"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
+                        }
+                        SelectionSettingV2 {
+                            Layout.fillWidth: true; settingKey: "videoMic"; label: ""; description: ""
+                            options: root.micList; defaultValue: "default"
+                        }
+                    }
+                }
+
+                // 4. Audio Format (Segmented Pill)
                 Rectangle {
                     width: parent.width
                     height: audCol2.implicitHeight + Theme.spacingM * 2
@@ -1074,7 +2047,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "audio_file"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "audio_file"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Audio Format"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -1098,10 +2084,11 @@ PluginSettings {
                     }
                 }
 
-                // 3. Audio Source Mode (Segmented Pill)
+                // 5. Audio Quality / Bitrate (Segmented Pill)
                 Rectangle {
                     width: parent.width
-                    height: audCol3.implicitHeight + Theme.spacingM * 2
+                    height: audCol7.implicitHeight + Theme.spacingM * 2
+                    readonly property real outerR: Theme.cornerRadius
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
@@ -1109,93 +2096,45 @@ PluginSettings {
                     visible: enableAudioToggle.value
 
                     ColumnLayout {
-                        id: audCol3
+                        id: audCol7
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingS
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "mic"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "tune"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Audio Source Mode"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Select what to capture in standalone audio recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                StyledText { text: "Audio Quality / Bitrate"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Bitrate quality preset for standalone audio recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                             }
                         }
 
                         SegmentedSetting {
-                            id: audioSourceSetting
                             Layout.fillWidth: true
-                            settingKey: "audioSource"
-                            defaultValue: "mic"
+                            settingKey: "audioBitrate"
+                            defaultValue: "192k"
                             options: [
-                                { title: "Mic Only", value: "mic", icon: "mic" },
-                                { title: "System Audio", value: "system", icon: "volume_up" },
-                                { title: "Both", value: "both", icon: "graphic_eq" }
+                                { title: "128k", value: "128k", icon: "speed" },
+                                { title: "192k", value: "192k", icon: "speed" },
+                                { title: "256k", value: "256k", icon: "speed" },
+                                { title: "320k", value: "320k", icon: "speed" }
                             ]
                         }
-                    }
-                }
-
-                // 4. Microphone Device
-                Rectangle {
-                    width: parent.width
-                    height: audCol4.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value && (audioSourceSetting.value === "mic" || audioSourceSetting.value === "both" || !audioSourceSetting.value)
-
-                    ColumnLayout {
-                        id: audCol4
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
-
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "mic"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Microphone Device"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Microphone to record from"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                            }
-                        }
-                        SelectionSettingV2 {
-                            Layout.fillWidth: true; settingKey: "videoMic"; label: ""; description: ""
-                            options: root.micList; defaultValue: "default"
-                        }
-                    }
-                }
-
-                // 5. Audio Custom Path
-                Rectangle {
-                    width: parent.width
-                    height: audCol5.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
-
-                    ColumnLayout {
-                        id: audCol5
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
-
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "folder"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Audio Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Absolute path to save audio recordings. Leave empty for ~/Music."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                            }
-                        }
-                        StringSetting { Layout.fillWidth: true; settingKey: "audioCustomPath"; label: ""; description: ""; placeholder: "~/Music"; defaultValue: "" }
                     }
                 }
 
@@ -1217,7 +2156,20 @@ PluginSettings {
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "terminal"; size: 20; color: Theme.primary }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "terminal"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
                             ColumnLayout {
                                 Layout.fillWidth: true; spacing: 2
                                 StyledText { text: "Audio Filename"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
@@ -1227,12 +2179,10 @@ PluginSettings {
                         StringSetting { Layout.fillWidth: true; settingKey: "audioFilename"; label: ""; description: ""; placeholder: "audio_2026-05-15_14-30-00.mp3"; defaultValue: "" }
                     }
                 }
-
-                // 7. Audio Quality / Bitrate (Segmented Pill - Last)
+                // 7. Audio Custom Path (Last)
                 Rectangle {
                     width: parent.width
-                    height: audCol7.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
+                    height: audCol5.implicitHeight + Theme.spacingM * 2
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
@@ -1240,227 +2190,62 @@ PluginSettings {
                     visible: enableAudioToggle.value
 
                     ColumnLayout {
-                        id: audCol7
+                        id: audCol5
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingS
 
                         RowLayout {
                             Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "tune"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Audio Quality / Bitrate"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Bitrate quality preset for standalone audio recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "folder"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
                             }
                         }
-
-                        SegmentedSetting {
-                            Layout.fillWidth: true
-                            settingKey: "audioBitrate"
-                            defaultValue: "192k"
-                            options: [
-                                { title: "128k", value: "128k", icon: "speed" },
-                                { title: "192k", value: "192k", icon: "speed" },
-                                { title: "256k", value: "256k", icon: "speed" },
-                                { title: "320k", value: "320k", icon: "speed" }
-                            ]
+                            ColumnLayout {
+                                Layout.fillWidth: true; spacing: 2
+                                StyledText { text: "Audio Custom Path"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                                StyledText { text: "Absolute path to save audio recordings. Leave empty for ~/Music."; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                            }
                         }
+                        StringSetting { Layout.fillWidth: true; settingKey: "audioCustomPath"; label: ""; description: ""; placeholder: "~/Music"; defaultValue: "" }
                     }
                 }
             }
         }
 
-        // ====================================================================
-        // SECTION 4: GENERAL CAPTURE SETTINGS
-        // ====================================================================
-        Column {
-            width: parent.width
-            spacing: Theme.spacingM
-
-            StyledText {
-                text: "General Capture Settings"
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.DemiBold
-                color: Theme.primary
-                padding: 0
-                leftPadding: Theme.spacingM
-            }
-
-            Column {
-                width: parent.width
-                spacing: 2
-
-                // 1. Capture Mode (Segmented Pill - First)
-                Rectangle {
-                    width: parent.width
-                    height: genCol1.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
-                    readonly property real innerR: 4
-                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    ColumnLayout {
-                        id: genCol1
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
-
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "camera"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Default Capture Mode"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Choose default capture mode (Interactive, Focused, Monitor, Window, All, Scrolling)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                            }
-                        }
-
-                        SegmentedSetting {
-                            Layout.fillWidth: true
-                            settingKey: "captureMode"
-                            defaultValue: "interactive"
-                            options: [
-                                { title: "Region", value: "interactive", icon: "crop" },
-                                { title: "Screen", value: "full", icon: "fullscreen" },
-                                { title: "Monitor", value: "monitor", icon: "desktop_windows" },
-                                { title: "Window", value: "window", icon: "picture_in_picture" },
-                                { title: "All", value: "all", icon: "grid_view" },
-                                { title: "Scroll", value: "scroll", icon: "swap_vert" }
-                            ]
-                        }
-                    }
-                }
-
-                // 2. Capture Delay (Segmented Pill)
-                Rectangle {
-                    width: parent.width
-                    height: genCol2.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    ColumnLayout {
-                        id: genCol2
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
-
-                        RowLayout {
-                            Layout.fillWidth: true; spacing: Theme.spacingM
-                            DankIcon { name: "timer"; size: 20; color: Theme.primary }
-                            ColumnLayout {
-                                Layout.fillWidth: true; spacing: 2
-                                StyledText { text: "Capture Delay"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                                StyledText { text: "Delay in seconds before capturing (non-interactive modes only)"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                            }
-                        }
-
-                        SegmentedSetting {
-                            Layout.fillWidth: true
-                            settingKey: "delaySeconds"
-                            defaultValue: "0"
-                            options: [
-                                { title: "None", value: "0", icon: "timer_off" },
-                                { title: "3s", value: "3", icon: "timer_3" },
-                                { title: "5s", value: "5", icon: "timer_5" },
-                                { title: "10s", value: "10", icon: "timer_10" }
-                            ]
-                        }
-                    }
-                }
-
-                // 3. Show Pointer
-                Rectangle {
-                    width: parent.width
-                    height: genRow3.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: genRow3
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "mouse"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "showPointer"
-                            label: "Show Pointer"; description: "Include mouse pointer in screenshots and video recordings"
-                            defaultValue: true
-                        }
-                    }
-                }
-
-                // 4. Show Notification
-                Rectangle {
-                    width: parent.width
-                    height: genRow4.implicitHeight + Theme.spacingM * 2
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: genRow4
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "notifications"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "showNotify"
-                            label: "Show Notification"; description: "Show system notification after capture or recording finishes"
-                            defaultValue: true
-                        }
-                    }
-                }
-
-                // 5. Copy Path on Capture (Last)
-                Rectangle {
-                    width: parent.width
-                    height: genRow5.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    RowLayout {
-                        id: genRow5
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        DankIcon { name: "content_copy"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "copyPathOnCapture"
-                            label: "Copy Path on Capture"; description: "Automatically copy the file path to clipboard after saving"
-                            defaultValue: true
-                        }
-                    }
-                }
-            }
-        }
-
-        // ====================================================================
-        // SECTION 5: TOOLBAR & UI SETTINGS
+// ====================================================================
+                // SECTION 5: TOOLBAR & UI SETTINGS (COSMETICS)
         // ====================================================================
         Column {
             width: parent.width
             spacing: Theme.spacingM
 
-            StyledText {
-                text: "Toolbar & UI Settings"
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.DemiBold
-                color: Theme.primary
-                padding: 0
+            Row {
+                spacing: Theme.spacingXS
                 leftPadding: Theme.spacingM
+                DankIcon {
+                    name: "dock_to_bottom"
+                    size: 16
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                StyledText {
+                    text: "Toolbar & UI Settings"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             Column {
@@ -1483,39 +2268,79 @@ PluginSettings {
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
                         spacing: Theme.spacingM
 
-                        DankIcon { name: "smart_button"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "showRecPill"
-                            label: "Show Recording Pill"; description: "Show the floating recording status pill during active recordings"
-                            defaultValue: true
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: showRecPillToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "smart_button"
+                                size: 18
+                                color: showRecPillToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Show Recording Pill"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Show the floating recording status pill during active recordings"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: showRecPillToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "showRecPill"
+                            readonly property alias value: showRecPillToggle.checked
+                            checked: true
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, true);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
 
-                // 2. Enable Controller Support
+                // 2. Recording Pill Opacity
                 Rectangle {
                     width: parent.width
-                    height: tbRow2.implicitHeight + Theme.spacingM * 2
+                    height: tbCol4.implicitHeight + Theme.spacingM * 2
+                    readonly property real outerR: Theme.cornerRadius
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    opacity: showRecPillToggle.value ? 1.0 : 0.4
+                    enabled: showRecPillToggle.value
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
 
-                    RowLayout {
-                        id: tbRow2
+                    ColumnLayout {
+                        id: tbCol4
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
+                        spacing: Theme.spacingS
 
-                        DankIcon { name: "stadia_controller"; size: 20; color: Theme.primary }
-                        ToggleSetting {
-                            Layout.fillWidth: true; settingKey: "enableController"
-                            label: "Enable Controller Support (BETA)"; description: "Allow gamepads to trigger and navigate the toolbar via IPC"
-                            defaultValue: false
+                        SliderSettingV2 {
+                            Layout.fillWidth: true; settingKey: "pillOpacity"
+                            label: "Recording Pill Opacity"; description: "Adjust background transparency of the status pill (default: 92%)"
+                            defaultValue: "0.92"; minVal: 0.10; maxVal: 1.00; isFloatBackend: true; showPercentage: true
+                            iconName: "opacity"
                         }
                     }
                 }
-
                 // 3. Toolbar Background Opacity
                 Rectangle {
                     width: parent.width
@@ -1540,30 +2365,67 @@ PluginSettings {
                     }
                 }
 
-                // 4. Recording Pill Opacity (Last)
+                // 4. Enable Controller Support (Last)
                 Rectangle {
                     width: parent.width
-                    height: tbCol4.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
+                    height: tbRow2.implicitHeight + Theme.spacingM * 2
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
-                    ColumnLayout {
-                        id: tbCol4
+                    RowLayout {
+                        id: tbRow2
                         anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                         anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingS
+                        spacing: Theme.spacingM
 
-                        SliderSettingV2 {
-                            Layout.fillWidth: true; settingKey: "pillOpacity"
-                            label: "Recording Pill Opacity"; description: "Adjust background transparency of the status pill (default: 92%)"
-                            defaultValue: "0.92"; minVal: 0.10; maxVal: 1.00; isFloatBackend: true; showPercentage: true
-                            iconName: "opacity"
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: enableControllerToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "stadia_controller"
+                                size: 18
+                                color: enableControllerToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Enable Controller Support (BETA)"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Allow gamepads to trigger and navigate the toolbar via IPC"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: enableControllerToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "enableController"
+                            readonly property alias value: enableControllerToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
                         }
                     }
                 }
+
             }
         }
 
@@ -1574,26 +2436,115 @@ PluginSettings {
             width: parent.width
             spacing: Theme.spacingM
 
-            StyledText {
-                text: "Commands & Shortcuts"
-                font.pixelSize: Theme.fontSizeSmall
-                font.weight: Font.DemiBold
-                color: Theme.primary
-                padding: 0
+            Row {
+                spacing: Theme.spacingXS
                 leftPadding: Theme.spacingM
+                DankIcon {
+                    name: "terminal"
+                    size: 16
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                StyledText {
+                    text: "Commands & Shortcuts"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.DemiBold
+                    color: Theme.primary
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             Column {
                 width: parent.width
                 spacing: 2
 
-                // 1. CLI Commands (First)
+                // 1. Launch Toolbar (First)
+                Rectangle {
+                    width: parent.width
+                    height: launchRow.implicitHeight + Theme.spacingM * 2
+                    readonly property real outerR: Theme.cornerRadius
+                    readonly property real innerR: 4
+                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: launchRow
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                            Layout.alignment: Qt.AlignVCenter
+
+                            DankIcon {
+                                name: "rocket_launch"
+                                size: 18
+                                color: Theme.primary
+                                anchors.centerIn: parent
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true; spacing: 2
+                            StyledText { text: "Launch Screen Capture Toolbar"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Open or toggle the capture overlay bar right now"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        Rectangle {
+                            id: launchBtn
+                            width: launchBtnContent.implicitWidth + Theme.spacingL * 2
+                            height: 36
+                            radius: Theme.cornerRadiusSmall || 8
+                            color: launchArea.pressed ? Qt.darker(Theme.primary, 1.2) : (launchArea.containsMouse ? Qt.lighter(Theme.primary, 1.1) : Theme.primary)
+                            Layout.alignment: Qt.AlignVCenter
+                            scale: launchArea.pressed ? 0.96 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 100 } }
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            RowLayout {
+                                id: launchBtnContent
+                                anchors.centerIn: parent
+                                spacing: Theme.spacingXS
+
+                                DankIcon {
+                                    name: "play_arrow"
+                                    size: 18
+                                    color: Theme.surfaceText
+                                }
+
+                                StyledText {
+                                    text: "Toggle Toolbar"
+                                    font.weight: Font.DemiBold
+                                    font.pixelSize: Theme.fontSizeMedium
+                                    color: Theme.surfaceText
+                                }
+                            }
+
+                            MouseArea {
+                                id: launchArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    launchProcess.running = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. CLI Commands
                 Rectangle {
                     width: parent.width
                     height: cmdCol1.implicitHeight + Theme.spacingM * 2
                     readonly property real outerR: Theme.cornerRadius
                     readonly property real innerR: 4
-                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
@@ -1628,7 +2579,7 @@ PluginSettings {
                     }
                 }
 
-                // 2. Niri Keybind (Last)
+                // 3. Niri Keybind (Last)
                 Rectangle {
                     width: parent.width
                     height: cmdCol2.implicitHeight + Theme.spacingM * 2
