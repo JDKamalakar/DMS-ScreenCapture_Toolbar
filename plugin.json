@@ -27,7 +27,11 @@
     "satty",
     "ffmpeg",
     "pipewire",
-    "pulseaudio-utils"
+    "pulseaudio-utils",
+    "jq",
+    "libnotify",
+    "python3",
+    "wtype"
   ],
   "screenshot": "https://raw.githubusercontent.com/JDKamalakar/DMS-ScreenCapture_Toolbar/refs/heads/main/assets/Screenshot_UI.png",
   "permissions": [
