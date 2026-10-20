@@ -1302,6 +1302,49 @@ PluginComponent {
             bottom: true
         }
 
+        BackgroundEffect.blurRegion: visible ? toolbarBlurRegion : null
+
+        Region {
+            id: toolbarBlurRegion
+            x: pillContainer.x
+            y: pillContainer.y
+            width: pillContainer.width
+            height: pillContainer.height
+            radius: pillContainer.height / 2
+
+            Region {
+                x: hintPillContainer.x
+                y: hintPillContainer.y
+                width: hintPillContainer.width
+                height: hintPillContainer.height
+                radius: 16
+            }
+
+            Region {
+                x: settingsBubble.visible ? settingsBubble.x : 0
+                y: settingsBubble.visible ? settingsBubble.y : 0
+                width: settingsBubble.visible ? settingsBubble.width : 0
+                height: settingsBubble.visible ? settingsBubble.height : 0
+                radius: 24
+            }
+
+            Region {
+                x: delayBubble.visible ? delayBubble.x : 0
+                y: delayBubble.visible ? delayBubble.y : 0
+                width: delayBubble.visible ? delayBubble.width : 0
+                height: delayBubble.visible ? delayBubble.height : 0
+                radius: 24
+            }
+
+            Region {
+                x: monitorBubble.visible ? monitorBubble.x : 0
+                y: monitorBubble.visible ? monitorBubble.y : 0
+                width: monitorBubble.visible ? monitorBubble.width : 0
+                height: monitorBubble.visible ? monitorBubble.height : 0
+                radius: 24
+            }
+        }
+
         Item {
             id: globalKeyHandler
             anchors.fill: parent
@@ -1476,22 +1519,21 @@ PluginComponent {
                 border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
 
-                // Position strictly above the right side of the pill
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
                 anchors.right: pillContainer.right
 
                 visible: opacity > 0.01
                 opacity: root.settingsExpanded ? 1 : 0
-                scale: root.settingsExpanded ? 1 : 0.9
+                scale: root.settingsExpanded ? 1 : 0.92
                 transformOrigin: Item.BottomRight
 
-                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                layer.enabled: true
+                layer.enabled: opacity > 0.01 && opacity < 0.99 ? false : true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowVerticalOffset: 8
@@ -1501,14 +1543,19 @@ PluginComponent {
 
                 // Triangle pointer
                 Rectangle {
+                    id: settingsPointer
                     width: 16; height: 16
                     color: settingsBubble.color
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
                     x: {
-                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
-                        return settingsBubble.mapFromItem(settingsBtn, settingsBtn.width / 2, 0).x - width / 2;
+                        try {
+                            let pt = settingsBubble.mapFromItem(settingsBtn, settingsBtn.width / 2, 0);
+                            return Math.max(16, Math.min(settingsBubble.width - width - 16, pt.x - width / 2));
+                        } catch (e) {
+                            return settingsBubble.width - 32;
+                        }
                     }
                     border.width: 1; border.color: settingsBubble.border.color
                     z: -1
@@ -2284,20 +2331,29 @@ PluginComponent {
                 
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.right: pillContainer.right
-                anchors.rightMargin: 0 // Flush right to match settingsBubble
+                x: {
+                    try {
+                        let btnCenterInPill = delayBtn.mapToItem(pillContainer, delayBtn.width / 2, 0).x;
+                        let targetX = pillContainer.x + btnCenterInPill - width / 2;
+                        let minX = 16;
+                        let maxX = (overlay ? overlay.width : 1920) - width - 16;
+                        return Math.max(minX, Math.min(maxX, targetX));
+                    } catch (e) {
+                        return pillContainer.x + pillContainer.width - width;
+                    }
+                }
                 
                 visible: opacity > 0.01
                 opacity: root.delayExpanded ? 1 : 0
-                scale: root.delayExpanded ? 1 : 0.9
-                transformOrigin: Item.BottomRight
+                scale: root.delayExpanded ? 1 : 0.92
+                transformOrigin: Item.Bottom
                 
-                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                layer.enabled: true
+                layer.enabled: opacity > 0.01 && opacity < 0.99 ? false : true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowVerticalOffset: 8
@@ -2307,14 +2363,19 @@ PluginComponent {
 
                 // Triangle pointer
                 Rectangle {
+                    id: delayPointer
                     width: 16; height: 16
                     color: delayBubble.color
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
                     x: {
-                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
-                        return delayBubble.mapFromItem(delayBtn, delayBtn.width / 2, 0).x - width / 2;
+                        try {
+                            let pt = delayBubble.mapFromItem(delayBtn, delayBtn.width / 2, 0);
+                            return Math.max(16, Math.min(delayBubble.width - width - 16, pt.x - width / 2));
+                        } catch (e) {
+                            return delayBubble.width / 2 - width / 2;
+                        }
                     }
                     border.width: 1; border.color: delayBubble.border.color
                     z: -1
@@ -2378,18 +2439,29 @@ PluginComponent {
                 
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.horizontalCenter: pillContainer.horizontalCenter
+                x: {
+                    try {
+                        let btnCenterInPill = monitorBtn.mapToItem(pillContainer, monitorBtn.width / 2, 0).x;
+                        let targetX = pillContainer.x + btnCenterInPill - width / 2;
+                        let minX = 16;
+                        let maxX = (overlay ? overlay.width : 1920) - width - 16;
+                        return Math.max(minX, Math.min(maxX, targetX));
+                    } catch (e) {
+                        return pillContainer.x + (pillContainer.width - width) / 2;
+                    }
+                }
                 
                 visible: opacity > 0.01
                 opacity: root.monitorExpanded ? 1 : 0
-                scale: root.monitorExpanded ? 1 : 0.9
+                scale: root.monitorExpanded ? 1 : 0.92
                 transformOrigin: Item.Bottom
                 
-                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                layer.enabled: true
+                layer.enabled: opacity > 0.01 && opacity < 0.99 ? false : true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowVerticalOffset: 8
@@ -2399,14 +2471,19 @@ PluginComponent {
 
                 // Triangle pointer
                 Rectangle {
+                    id: monitorPointer
                     width: 16; height: 16
                     color: monitorBubble.color
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
                     x: {
-                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
-                        return monitorBubble.mapFromItem(monitorBtn, monitorBtn.width / 2, 0).x - width / 2;
+                        try {
+                            let pt = monitorBubble.mapFromItem(monitorBtn, monitorBtn.width / 2, 0);
+                            return Math.max(16, Math.min(monitorBubble.width - width - 16, pt.x - width / 2));
+                        } catch (e) {
+                            return monitorBubble.width / 2 - width / 2;
+                        }
                     }
                     border.width: 1; border.color: monitorBubble.border.color
                     z: -1
@@ -2688,6 +2765,7 @@ PluginComponent {
 
             // Instruction Hint Pill
             Rectangle {
+                id: hintPillContainer
                 width: hintText.implicitWidth + 32; height: 32; radius: 16
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
@@ -3230,6 +3308,17 @@ PluginComponent {
         height: root.recPillWindowHeight
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
+
+        BackgroundEffect.blurRegion: visible ? recPillBlurRegion : null
+
+        Region {
+            id: recPillBlurRegion
+            x: recPillBg.x
+            y: recPillBg.y
+            width: recPillBg.width
+            height: recPillBg.height
+            radius: recPillBg.radius
+        }
 
         // Local Tooltip for Recording Pill
         Item {

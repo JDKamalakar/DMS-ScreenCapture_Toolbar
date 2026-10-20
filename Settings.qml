@@ -146,6 +146,29 @@ PluginSettings {
     readonly property real outerR: Theme.cornerRadius || 12
     readonly property real innerR: 4
 
+    component SectionHeader: Row {
+        property string title: ""
+        property string iconName: ""
+
+        spacing: Theme.spacingXS
+        leftPadding: Theme.spacingM
+
+        DankIcon {
+            name: iconName
+            size: 16
+            color: Theme.primary
+            anchors.verticalCenter: parent.verticalCenter
+        }
+
+        StyledText {
+            text: title
+            font.pixelSize: Theme.fontSizeSmall
+            font.weight: Font.DemiBold
+            color: Theme.primary
+            anchors.verticalCenter: parent.verticalCenter
+        }
+    }
+
     function loadValue(key, def) {
         if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
             return PluginService.loadPluginData(root.pluginId, key, def);
@@ -2429,185 +2452,136 @@ PluginSettings {
             }
         }
 
-        // ====================================================================
-        // SECTION 6: COMMANDS & SHORTCUTS
-        // ====================================================================
+        // ---------------------------------------------------------------------
+        // IPC COMMANDS & SHORTCUTS
+        // ---------------------------------------------------------------------
         Column {
             width: parent.width
-            spacing: Theme.spacingM
+            spacing: Theme.spacingS
 
-            Row {
-                spacing: Theme.spacingXS
-                leftPadding: Theme.spacingM
-                DankIcon {
-                    name: "terminal"
-                    size: 16
-                    color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                StyledText {
-                    text: "Commands & Shortcuts"
-                    font.pixelSize: Theme.fontSizeSmall
-                    font.weight: Font.DemiBold
-                    color: Theme.primary
-                    anchors.verticalCenter: parent.verticalCenter
-                }
+            SectionHeader {
+                title: "IPC Commands & Shortcuts"
+                iconName: "keyboard_command_key"
             }
 
-            Column {
+            Rectangle {
                 width: parent.width
-                spacing: 2
+                implicitHeight: ipcInnerCol.implicitHeight + Theme.spacingM * 2
+                radius: root.outerR
+                color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
-                // 1. Launch Toolbar (First)
-                Rectangle {
-                    width: parent.width
-                    height: launchRow.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
-                    readonly property real innerR: 4
-                    topLeftRadius: outerR; topRightRadius: outerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                Column {
+                    id: ipcInnerCol
+                    width: parent.width - Theme.spacingM * 2
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: Theme.spacingM
+                    spacing: Theme.spacingM
 
                     RowLayout {
-                        id: launchRow
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        width: parent.width
                         spacing: Theme.spacingM
 
-                        Rectangle {
-                            width: 32
-                            height: 32
-                            radius: 16
-                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
-                            Layout.alignment: Qt.AlignVCenter
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 2
 
-                            DankIcon {
-                                name: "rocket_launch"
-                                size: 18
-                                color: Theme.primary
-                                anchors.centerIn: parent
+                            StyledText {
+                                text: "Control and trigger the screen capture toolbar via IPC and keybinds"
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                                width: parent.width
+                                wrapMode: Text.WordWrap
                             }
                         }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true; spacing: 2
-                            StyledText { text: "Launch Screen Capture Toolbar"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Medium; color: Theme.surfaceText }
-                            StyledText { text: "Open or toggle the capture overlay bar right now"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                        }
-
                         Rectangle {
-                            id: launchBtn
-                            width: launchBtnContent.implicitWidth + Theme.spacingL * 2
-                            height: 36
-                            radius: Theme.cornerRadiusSmall || 8
-                            color: launchArea.pressed ? Qt.darker(Theme.primary, 1.2) : (launchArea.containsMouse ? Qt.lighter(Theme.primary, 1.1) : Theme.primary)
+                            id: openToolbarBtn
+                            Layout.preferredHeight: 34
+                            Layout.preferredWidth: openToolbarRow.implicitWidth + 24
                             Layout.alignment: Qt.AlignVCenter
-                            scale: launchArea.pressed ? 0.96 : 1.0
-                            Behavior on scale { NumberAnimation { duration: 100 } }
+                            property bool isHovered: openToolbarMa.containsMouse
+
+                            radius: isHovered ? (height / 2) : (Theme.cornerRadius || 12)
+                            Behavior on radius { NumberAnimation { duration: 350; easing.type: Easing.OutExpo } }
+
+                            color: isHovered ? Theme.withAlpha(Theme.primary, 0.25) : Theme.withAlpha(Theme.primary, 0.15)
                             Behavior on color { ColorAnimation { duration: 150 } }
+                            border.width: 1
+                            border.color: isHovered ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3)
+                            Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                            scale: openToolbarMa.pressed ? 0.94 : (isHovered ? 1.02 : 1.0)
+                            Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+
+                            DankRipple {
+                                id: openToolbarRip
+                                anchors.fill: parent
+                                cornerRadius: parent.radius
+                                rippleColor: Theme.primary
+                            }
 
                             RowLayout {
-                                id: launchBtnContent
+                                id: openToolbarRow
                                 anchors.centerIn: parent
-                                spacing: Theme.spacingXS
+                                spacing: 6
 
                                 DankIcon {
-                                    name: "play_arrow"
-                                    size: 18
-                                    color: Theme.surfaceText
+                                    name: "open_in_new"
+                                    size: 16
+                                    color: Theme.primary
                                 }
 
                                 StyledText {
                                     text: "Toggle Toolbar"
-                                    font.weight: Font.DemiBold
-                                    font.pixelSize: Theme.fontSizeMedium
-                                    color: Theme.surfaceText
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    font.weight: Font.Medium
+                                    color: Theme.primary
                                 }
                             }
 
                             MouseArea {
-                                id: launchArea
+                                id: openToolbarMa
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onPressed: (m) => openToolbarRip.trigger(m.x, m.y)
                                 onClicked: {
                                     launchProcess.running = true;
                                 }
                             }
                         }
                     }
-                }
 
-                // 2. CLI Commands
-                Rectangle {
-                    width: parent.width
-                    height: cmdCol1.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-
-                    ColumnLayout {
-                        id: cmdCol1
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
-
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: "You can open, close, or toggle the screen capture toolbar using the dms CLI:"
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.surfaceVariantText
-                            wrapMode: Text.WordWrap
-                        }
-
-                        CopyBox {
-                            label: "Toggle Toolbar Command"
-                            text: "dms ipc call screenCaptureToolbar toggle"
-                        }
-
-                        CopyBox {
-                            label: "Open Toolbar Command"
-                            text: "dms ipc call screenCaptureToolbar open"
-                        }
-
-                        CopyBox {
-                            label: "Close Toolbar Command"
-                            text: "dms ipc call screenCaptureToolbar close"
-                        }
+                    CopyBox {
+                        label: "Toggle Toolbar Command"
+                        text: "dms ipc call screenCaptureToolbar toggle"
                     }
-                }
 
-                // 3. Niri Keybind (Last)
-                Rectangle {
-                    width: parent.width
-                    height: cmdCol2.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
-                    readonly property real innerR: 4
-                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
-                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
-                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                    CopyBox {
+                        label: "Open Toolbar Command"
+                        text: "dms ipc call screenCaptureToolbar open"
+                    }
 
-                    ColumnLayout {
-                        id: cmdCol2
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
-                        spacing: Theme.spacingM
+                    CopyBox {
+                        label: "Close Toolbar Command"
+                        text: "dms ipc call screenCaptureToolbar close"
+                    }
 
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: "To trigger the screen capture toolbar using Print Screen, add this spawn command to your Niri configuration binds:"
-                            font.pixelSize: Theme.fontSizeSmall
-                            color: Theme.primary
-                            font.italic: true
-                            wrapMode: Text.WordWrap
-                        }
+                    StyledText {
+                        width: parent.width
+                        text: "To trigger the screen capture toolbar using Print Screen, add this spawn command to your Niri configuration binds:"
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.primary
+                        font.italic: true
+                        wrapMode: Text.WordWrap
+                    }
 
-                        CopyBox {
-                            label: "Niri Bind Configuration"
-                            text: "Print { spawn \"dms\" \"ipc\" \"call\" \"screenCaptureToolbar\" \"toggle\"; }"
-                        }
+                    CopyBox {
+                        label: "Niri Bind Configuration"
+                        text: "Print { spawn \"dms\" \"ipc\" \"call\" \"screenCaptureToolbar\" \"toggle\"; }"
                     }
                 }
             }
