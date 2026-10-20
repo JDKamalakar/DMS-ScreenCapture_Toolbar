@@ -1,0 +1,151 @@
+name: Release on Version Bump
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "plugin.json"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version bump and create release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+
+            // 1. Read plugin metadata from plugin.json
+            let currentVersion = '';
+            let pluginId = 'screenCaptureToolbar';
+            try {
+              const plugin = JSON.parse(fs.readFileSync('plugin.json', 'utf8'));
+              currentVersion = (plugin.version || '').trim();
+              if (plugin.id) pluginId = plugin.id;
+            } catch (err) {
+              core.setFailed(`Failed to parse plugin.json: ${err.message}`);
+              return;
+            }
+
+            if (!currentVersion) {
+              core.setFailed('No version found in plugin.json');
+              return;
+            }
+
+            const tagName = `v${currentVersion}`;
+            core.info(`Current version in plugin.json: ${currentVersion} (tag: ${tagName})`);
+
+            // 2. Check if this tag / release already exists
+            let tagExists = false;
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tagName
+              });
+              tagExists = true;
+            } catch (err) {
+              // 404 means release doesn't exist yet
+              tagExists = false;
+            }
+
+            if (tagExists) {
+              core.info(`Release ${tagName} already exists. Skipping release creation.`);
+              return;
+            }
+
+            // 3. Find previous release tag or latest commit to compare from
+            let prevTag = '';
+            try {
+              const tagList = execSync('git tag --sort=-creatordate', { encoding: 'utf8' })
+                .split('\n')
+                .map(t => t.trim())
+                .filter(Boolean);
+
+              prevTag = tagList.find(t => t !== tagName) || '';
+            } catch (err) {
+              core.warning(`Error finding previous tags: ${err.message}`);
+            }
+
+            // 4. Generate changelog of commits between previous tag and HEAD
+            let changelog = '';
+            try {
+              const range = prevTag ? `${prevTag}..HEAD` : 'HEAD';
+              core.info(`Generating changelog for git log range: ${range}`);
+              
+              const gitLog = execSync(`git log ${range} --pretty=format:"* %s ([%h](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/%H))" --no-merges`, { encoding: 'utf8' }).trim();
+              
+              if (gitLog) {
+                changelog = `### What's Changed\n\n${gitLog}\n`;
+              } else {
+                changelog = `### What's Changed\n\n* Release version ${currentVersion}\n`;
+              }
+            } catch (err) {
+              core.warning(`Failed to extract git log: ${err.message}`);
+              changelog = `### What's Changed\n\n* Release version ${currentVersion}\n`;
+            }
+
+            if (prevTag) {
+              changelog += `\n**Full Changelog**: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${prevTag}...${tagName}`;
+            }
+
+            // 5. Create tar.gz archive artifact for the plugin
+            const archiveName = `${pluginId}-v${currentVersion}.tar.gz`;
+            const tmpArchivePath = `/tmp/${archiveName}`;
+            core.info(`Creating release archive ${archiveName}...`);
+            try {
+              execSync(`tar --exclude="./.git" --exclude="./.github" --exclude="*.tar.gz" -czf "${tmpArchivePath}" .`, { stdio: 'inherit' });
+              fs.copyFileSync(tmpArchivePath, archiveName);
+            } catch (err) {
+              core.setFailed(`Failed to create tar.gz archive: ${err.message}`);
+              return;
+            }
+
+            // 6. Create the GitHub release and tag
+            let releaseData;
+            try {
+              const response = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tagName,
+                name: `v${currentVersion}`,
+                body: changelog,
+                draft: false,
+                prerelease: false,
+                target_commitish: context.sha
+              });
+              releaseData = response.data;
+              core.info(`Successfully created release: ${releaseData.html_url}`);
+            } catch (err) {
+              core.setFailed(`Failed to create release: ${err.message}`);
+              return;
+            }
+
+            // 7. Upload the tar.gz archive asset to the release
+            try {
+              const fileBuffer = fs.readFileSync(archiveName);
+              const uploadResponse = await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: releaseData.id,
+                name: archiveName,
+                data: fileBuffer,
+                headers: {
+                  'content-type': 'application/gzip',
+                  'content-length': fileBuffer.length
+                }
+              });
+              core.info(`Successfully uploaded asset: ${uploadResponse.data.browser_download_url}`);
+            } catch (err) {
+              core.setFailed(`Failed to upload release asset: ${err.message}`);
+            }

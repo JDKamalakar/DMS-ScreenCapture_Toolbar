@@ -18,10 +18,16 @@ Item {
     opacity: enabled ? 1 : 0.5
     Behavior on opacity { NumberAnimation { duration: Theme.shortDuration } }
 
+    property bool isInitialized: false
+
     function loadValue() {
         const settings = findSettings();
-        if (settings && settings.pluginService) {
+        if (settings) {
             value = settings.loadValue(settingKey, defaultValue);
+            isInitialized = true;
+        } else if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
+            value = PluginService.loadPluginData("screenCaptureToolbar", settingKey, defaultValue);
+            isInitialized = true;
         }
     }
 
@@ -56,8 +62,14 @@ Item {
     }
 
     onValueChanged: {
-        const settings = findSettings()
-        if (settings) settings.saveValue(settingKey, value)
+        if (!isInitialized) return;
+        const settings = findSettings();
+        if (settings) {
+            settings.saveValue(settingKey, value);
+        } else if (typeof PluginService !== "undefined" && PluginService && PluginService.savePluginData) {
+            PluginService.savePluginData("screenCaptureToolbar", settingKey, value);
+            if (PluginService.setGlobalVar) PluginService.setGlobalVar("screenCaptureToolbar", settingKey, value);
+        }
     }
 
     function findSettings() {

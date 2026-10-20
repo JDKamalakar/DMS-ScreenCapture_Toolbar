@@ -16,7 +16,7 @@ PluginComponent {
 
     // -- Internal State -------------------------------------------------------
     property string captureMode: (pluginData && pluginData.captureMode) || "interactive"
-    property bool isVideoMode: false
+    property bool isVideoMode: (pluginData && pluginData.isVideoMode != null) ? pluginData.isVideoMode : (((pluginData && pluginData.mediaMode) || "photo") === "video")
     property bool settingsExpanded: false
     property bool delayExpanded: false
     property bool monitorExpanded: false
@@ -97,6 +97,7 @@ PluginComponent {
     property int quality: (pluginData && pluginData.quality) || 90
     property string customPath: (pluginData && pluginData.customPath) || ""
     property string filename: (pluginData && pluginData.filename) || ""
+    property int scrollInterval: (pluginData && pluginData.scrollInterval != null) ? pluginData.scrollInterval : 45
     property bool stdout: (pluginData && pluginData.stdout != null) ? pluginData.stdout : false
     property string pipeCommand: (pluginData && pluginData.pipeCommand) || ""
     readonly property string defaultPipeCommand: "{ mkdir -p \"$HOME/Pictures/Screenshots\"; satty --filename - --output-filename \"$HOME/Pictures/Screenshots/screenshot_$(date '+%Y-%m-%d_%H-%M-%S')_edit.png\"; }"
@@ -176,6 +177,9 @@ PluginComponent {
         }
     }
 
+    readonly property string micTestFile: runtimeDir + "/dms_mic_test.wav"
+    readonly property string micTestStopFile: runtimeDir + "/dms_mic_stop"
+
     Process {
         id: micTestProcess
         command: []
@@ -205,6 +209,12 @@ PluginComponent {
             root.isProcessingMic = false;
             root.micTestCountdown = 0;
         }
+    }
+
+    Process {
+        id: micTestStopProcess
+        command: ["bash", "-c", "touch " + root.shellQuote(root.micTestStopFile)]
+        running: false
     }
 
     property bool multiMonitorScreenshot: (pluginData && pluginData.multiMonitorScreenshot != null) ? pluginData.multiMonitorScreenshot : false
@@ -248,6 +258,9 @@ PluginComponent {
     property bool isMicCaptured: false
     property bool isMicMuted: false
     property int recordingElapsed: 0
+    property int recorderPid: 0
+    readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/" + (Quickshell.env("UID") || "1000")
+    readonly property string recorderPidFile: runtimeDir + "/dms_recorder.pid"
     property var recordingProcess: null
     property bool showRecPill: (pluginData && pluginData.showRecPill !== undefined) ? pluginData.showRecPill : true
     property bool showNotify: (pluginData && pluginData.showNotify !== undefined) ? pluginData.showNotify : true
@@ -304,6 +317,15 @@ PluginComponent {
             root.isMicMuted = false;
             root.recordingElapsed = 0;
             return "cancelled";
+        }
+
+        /** Store PID of spawned recorder for targeted signal handling */
+        function onRecorderStarted(pid: string): string {
+            let parsed = parseInt(pid);
+            if (!isNaN(parsed) && parsed > 0) {
+                root.recorderPid = parsed;
+            }
+            return "pid_recorded";
         }
 
         /** Show pill + timer only after region selection / portal begins recording (interactive video). Called from bash. */
@@ -447,7 +469,7 @@ PluginComponent {
         function controllerActionRB(): string {
             if (!root.enableController) return "controller disabled";
             if (!overlay.visible) return "toolbar not open";
-            let modes = ["interactive", "monitor", "all"];
+            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
             let idx = modes.indexOf(root.captureMode);
             if (idx === -1) idx = 0;
             idx = (idx + 1) % modes.length;
@@ -459,7 +481,7 @@ PluginComponent {
         function controllerActionLB(): string {
             if (!root.enableController) return "controller disabled";
             if (!overlay.visible) return "toolbar not open";
-            let modes = ["interactive", "monitor", "all"];
+            let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
             let idx = modes.indexOf(root.captureMode);
             if (idx === -1) idx = 0;
             idx = (idx - 1 + modes.length) % modes.length;
@@ -472,6 +494,9 @@ PluginComponent {
 
 
     function open() {
+        if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
+            root.enableAudioRecorder = PluginService.loadPluginData("screenCaptureToolbar", "enableAudioRecorder", false);
+        }
         root.settingsExpanded = false;
         root.delayExpanded = false;
         root.monitorExpanded = false;
@@ -493,7 +518,7 @@ PluginComponent {
 
     Process {
         id: gamepadProcess
-        command: ["python3", "/home/JD/Downloads/Projects/DMS-ScreenCapture_Toolbar/gamepad_listener.py"]
+        command: ["python3", Qt.resolvedUrl("./gamepad_listener.py").toString().replace(/^file:\/\//, "")]
         running: root.enableController
     }
 
@@ -512,10 +537,13 @@ PluginComponent {
     }
 
     Connections {
-        target: root.pluginService
+        target: (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService
+        ignoreUnknownSignals: true
         function onGlobalVarChanged(plugin, key) {
-            if (plugin === "screenCaptureToolbar" && root.pluginService) {
-                const value = root.pluginService.getGlobalVar(plugin, key, undefined);
+            if (plugin === "screenCaptureToolbar") {
+                const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService;
+                if (!svc) return;
+                const value = svc.getGlobalVar(plugin, key, undefined);
                 if (value === undefined) return;
 
                 if (key === "copyToClipboard") root.copyToClipboard = value;
@@ -533,6 +561,7 @@ PluginComponent {
                 else if (key === "format") root.format = value;
                 else if (key === "quality") root.quality = value;
                 else if (key === "customPath") root.customPath = value;
+                else if (key === "scrollInterval") root.scrollInterval = value;
                 else if (key === "enableEditorShortcut") root.enableEditorShortcut = value;
                 else if (key === "swapCaptureKeys") root.swapCaptureKeys = value;
                 else if (key === "delaySeconds") root.delaySeconds = value;
@@ -550,10 +579,25 @@ PluginComponent {
                 else if (key === "audioCustomPath") root.audioCustomPath = value;
                 else if (key === "audioFilename") root.audioFilename = value;
                 else if (key === "audioBitrate") root.audioBitrate = value;
-
+                else if (key === "mediaMode") {
+                    root.mediaMode = value;
+                    root.isVideoMode = (value === "video");
+                }
+                else if (key === "isVideoMode") {
+                    root.isVideoMode = value;
+                    if (value) root.mediaMode = "video";
+                    else if (root.mediaMode === "video") root.mediaMode = "photo";
+                }
                 else if (key === "pipeCommand") root.pipeCommand = value;
                 else if (key === "toolbarOpacity") root.toolbarOpacity = value;
                 else if (key === "pillOpacity") root.pillOpacity = value;
+            }
+        }
+        function onPluginDataChanged(pluginId) {
+            if (pluginId === "screenCaptureToolbar") {
+                const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService;
+                if (!svc || !svc.loadPluginData) return;
+                root.enableAudioRecorder = svc.loadPluginData("screenCaptureToolbar", "enableAudioRecorder", false);
             }
         }
     }
@@ -721,13 +765,18 @@ PluginComponent {
 
     onPluginDataChanged: {
         if (!pluginData) return;
-        root.captureMode = pluginData.captureMode || "interactive";
+        if (!overlay || !overlay.visible) {
+            root.captureMode = pluginData.captureMode || "interactive";
+            root.mediaMode = (!root.enableAudioRecorder && pluginData.mediaMode === "audio") ? "photo" : (pluginData.mediaMode || "photo");
+            root.isVideoMode = pluginData.isVideoMode !== undefined ? pluginData.isVideoMode : (root.mediaMode === "video");
+        }
         root.showPointer = pluginData.showPointer !== undefined ? pluginData.showPointer : true;
         root.saveToDisk = pluginData.saveToDisk !== undefined ? pluginData.saveToDisk : true;
         root.copyToClipboard = pluginData.copyToClipboard !== undefined ? pluginData.copyToClipboard : true;
         root.format = pluginData.format || "png";
         root.quality = pluginData.quality || 90;
         root.customPath = pluginData.customPath || "";
+        root.scrollInterval = pluginData.scrollInterval !== undefined ? pluginData.scrollInterval : 45;
         root.stdout = pluginData.stdout !== undefined ? pluginData.stdout : false;
         root.pipeCommand = pluginData.pipeCommand || "";
         root.recordAudio = pluginData.recordAudio !== undefined ? pluginData.recordAudio : true;
@@ -828,6 +877,11 @@ PluginComponent {
         }
         else if (root.captureMode === "all") dmsStr += " all";
         else if (root.captureMode === "window") dmsStr += " window";
+        else if (root.captureMode === "scroll") {
+            dmsStr += " scroll";
+            let interval = (root.scrollInterval && root.scrollInterval >= 30 && root.scrollInterval <= 1000) ? root.scrollInterval : 45;
+            dmsStr += " --interval " + interval;
+        }
 
         dmsStr += root.showPointer ? " --cursor=on" : " --cursor=off";
         if (!root.saveToDisk) dmsStr += " --no-file";
@@ -931,6 +985,8 @@ PluginComponent {
         let path = dir + "/" + filename;
 
         let prepends = [];
+        prepends.push("[ -z \"$XDG_RUNTIME_DIR\" ] && export XDG_RUNTIME_DIR=/run/user/$(id -u)");
+        prepends.push("if [ -z \"$WAYLAND_DISPLAY\" ]; then W_SOCKET=$(ls /run/user/$(id -u)/wayland-[0-9]* 2>/dev/null | head -n 1); [ -n \"$W_SOCKET\" ] && export WAYLAND_DISPLAY=$(basename \"$W_SOCKET\"); fi");
         prepends.push("export NIRI_SOCKET=$(ls /run/user/$(id -u)/niri*.sock 2>/dev/null | head -n 1)");
         if (root.recordAudio) {
             prepends.push("SINK=$(pactl get-default-sink 2>/dev/null); if [ -n \"$SINK\" ]; then SYSTEM_AUDIO=\"$SINK.monitor\"; else SYSTEM_AUDIO=\"default_output\"; fi");
@@ -960,7 +1016,8 @@ PluginComponent {
             gsrSuffix += " -k " + root.videoCodec;
 
         let prelude = prepends.join("; ");
-        let scriptBody;
+        let notifyStartPid = "command -v dms >/dev/null 2>&1 && ( dms ipc call screenCaptureToolbar onRecorderStarted \"$REC_PID\" 2>/dev/null || dms ipc screenCaptureToolbar onRecorderStarted \"$REC_PID\" 2>/dev/null ); ";
+        let scriptBody = "";
         if (root.captureMode === "interactive") {
             // Portal alone is unreliable on niri / some Wayland compositors; use slurp + -w region when available.
             scriptBody =
@@ -970,13 +1027,12 @@ PluginComponent {
                 "if command -v slurp >/dev/null 2>&1; then " +
                 "REGION=$(slurp -f '%wx%h+%x+%y') || { cancel_rec; exit 1; }; " +
                 "[ -z \"$REGION\" ] && { cancel_rec; exit 1; }; " +
-                "start_rec; exec gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + "; " +
+                "start_rec; gpu-screen-recorder -w region -region \"$REGION\"" + gsrSuffix + " & REC_PID=$!; " +
+                "echo \"$REC_PID\" > " + root.shellQuote(root.recorderPidFile) + "; " + notifyStartPid + "wait $REC_PID; rm -f " + root.shellQuote(root.recorderPidFile) + "; " +
                 "else " +
-                "start_rec; exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "start_rec; gpu-screen-recorder -w portal" + gsrSuffix + " & REC_PID=$!; " +
+                "echo \"$REC_PID\" > " + root.shellQuote(root.recorderPidFile) + "; " + notifyStartPid + "wait $REC_PID; rm -f " + root.shellQuote(root.recorderPidFile) + "; " +
                 "fi";
-        } else if (root.captureMode === "monitor") {
-            let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "\"$MONITOR\"";
-            scriptBody = "mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w " + mon + gsrSuffix;
         } else if (root.captureMode === "all") {
             scriptBody = "mkdir -p \"" + dir + "\"; " +
                 "HAS_PORTAL=\"\"; " +
@@ -986,15 +1042,21 @@ PluginComponent {
                 "busctl introspect org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop 2>/dev/null | grep -q \"org.freedesktop.portal.ScreenCast\" && HAS_PORTAL=\"1\"; " +
                 "fi; " +
                 "if [ -n \"$HAS_PORTAL\" ] && { [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; }; then " +
-                "exec gpu-screen-recorder -w portal" + gsrSuffix + "; " +
+                "gpu-screen-recorder -w portal" + gsrSuffix + " & REC_PID=$!; " +
                 "elif [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; then " +
                 "notify-send \"Multi-Monitor Recording\" \"Recording focused screen. Install a desktop portal (e.g. xdg-desktop-portal-niri) to record all screens on Wayland.\" -t 5000; " +
-                "exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix + "; " +
+                "gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix + " & REC_PID=$!; " +
                 "else " +
-                "exec gpu-screen-recorder -w screen" + gsrSuffix + "; " +
-                "fi";
+                "gpu-screen-recorder -w screen" + gsrSuffix + " & REC_PID=$!; " +
+                "fi; " +
+                "echo \"$REC_PID\" > " + root.shellQuote(root.recorderPidFile) + "; " + notifyStartPid + "wait $REC_PID; rm -f " + root.shellQuote(root.recorderPidFile) + "; ";
+        } else if (root.captureMode === "monitor") {
+            let mon = (root.videoMonitor !== "Focused" && root.videoMonitor !== "default") ? root.videoMonitor : "\"$MONITOR\"";
+            scriptBody = "mkdir -p \"" + dir + "\"; gpu-screen-recorder -w " + mon + gsrSuffix + " & REC_PID=$!; " +
+                "echo \"$REC_PID\" > " + root.shellQuote(root.recorderPidFile) + "; " + notifyStartPid + "wait $REC_PID; rm -f " + root.shellQuote(root.recorderPidFile) + "; ";
         } else {
-            scriptBody = "mkdir -p \"" + dir + "\"; exec gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix;
+            scriptBody = "mkdir -p \"" + dir + "\"; gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix + " & REC_PID=$!; " +
+                "echo \"$REC_PID\" > " + root.shellQuote(root.recorderPidFile) + "; " + notifyStartPid + "wait $REC_PID; rm -f " + root.shellQuote(root.recorderPidFile) + "; ";
         }
 
         let finalCmd = "sleep 0.5; " + (prelude !== "" ? prelude + "; " + scriptBody : scriptBody);
@@ -1024,17 +1086,18 @@ PluginComponent {
         let path = dir + "/" + filename;
 
         let prepends = [];
-        if (root.audioSource === "system" || root.audioSource === "both") {
-            prepends.push("SINK=$(pactl get-default-sink 2>/dev/null); if [ -n \"$SINK\" ]; then SYSTEM_AUDIO=\"$SINK.monitor\"; else SYSTEM_AUDIO=\"default_output\"; fi");
-        }
-        if (root.audioSource === "mic" || root.audioSource === "both") {
-            let mic = root.videoMic && root.videoMic !== "default" ? root.videoMic : "$(pactl get-default-source 2>/dev/null)";
-            prepends.push("MIC_AUDIO=\"" + mic + "\"; if [ -z \"$MIC_AUDIO\" ]; then MIC_AUDIO=\"default_input\"; fi");
-        }
-
-        let audioArgs = [];
-        if (root.audioSource === "system" || root.audioSource === "both") audioArgs.push("$SYSTEM_AUDIO");
-        if (root.audioSource === "mic" || root.audioSource === "both") audioArgs.push("$MIC_AUDIO");
+        prepends.push("SINK=$(pactl get-default-sink 2>/dev/null); if [ -n \"$SINK\" ]; then SYSTEM_AUDIO=\"$SINK.monitor\"; else SYSTEM_AUDIO=\"@DEFAULT_SINK@.monitor\"; fi");
+        let mic = root.videoMic && root.videoMic !== "default" ? root.videoMic : "$(pactl get-default-source 2>/dev/null)";
+        prepends.push("MIC_AUDIO=\"" + mic + "\"; if [ -z \"$MIC_AUDIO\" ]; then MIC_AUDIO=\"@DEFAULT_SOURCE@\"; fi");
+        // Bluetooth headset check: if recording mic and card is in a2dp profile without input stream, switch to headset-head-unit and restore on exit
+        prepends.push("BT_CARD=\"\"; OLD_BT_PROFILE=\"\"; " +
+                      "if [ -n \"$MIC_AUDIO\" ]; then " +
+                      "BT_CARD=$(pactl list sources 2>/dev/null | awk -v mic=\"$MIC_AUDIO\" '$1 == \"Name:\" { cur = $2 } cur == mic && /device\\.name =/ { gsub(/\"/, \"\", $3); print $3; exit }'); " +
+                      "if [ -n \"$BT_CARD\" ]; then " +
+                      "CUR_P=$(pactl list cards 2>/dev/null | awk -v card=\"$BT_CARD\" '$1 == \"Name:\" { cur = $2 } cur == card && /Active Profile:/ { print $3; exit }'); " +
+                      "if echo \"$CUR_P\" | grep -q \"a2dp\"; then " +
+                      "OLD_BT_PROFILE=\"$CUR_P\"; pactl set-card-profile \"$BT_CARD\" headset-head-unit 2>/dev/null; sleep 0.5; " +
+                      "fi; fi; fi");
 
         let prelude = prepends.join("; ");
         let cmd = "mkdir -p \"" + dir + "\"; ";
@@ -1044,58 +1107,47 @@ PluginComponent {
         let fmt = root.audioFormat;
         let bitrate = root.audioBitrate || "192k";
 
+        let ffmpegArgs = "ffmpeg -y ";
+        let sourceMode = root.audioSource;
+        if (sourceMode === "system") {
+            ffmpegArgs += "-f pulse -i \"$SYSTEM_AUDIO\" ";
+        } else if (sourceMode === "mic") {
+            ffmpegArgs += "-f pulse -i \"$MIC_AUDIO\" ";
+        } else {
+            // "both"
+            ffmpegArgs += "-f pulse -i \"$MIC_AUDIO\" -f pulse -i \"$SYSTEM_AUDIO\" -filter_complex \"amix=inputs=2\" ";
+        }
+
         if (fmt === "opus" || fmt === "ogg") {
-            cmd += "exec ffmpeg -y ";
-            if (audioArgs.length > 1) {
-                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
-            } else {
-                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
-            }
             let acodec = fmt === "opus" ? "libopus" : "libvorbis";
-            cmd += "-c:a " + acodec + " -b:a " + bitrate + " \"" + path + "\"";
+            ffmpegArgs += "-c:a " + acodec + " -b:a " + bitrate + " \"" + path + "\"";
         } else if (fmt === "flac") {
-            cmd += "exec ffmpeg -y ";
-            if (audioArgs.length > 1) {
-                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
-            } else {
-                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
-            }
-            cmd += "-c:a flac \"" + path + "\"";
+            ffmpegArgs += "-c:a flac \"" + path + "\"";
         } else if (fmt === "wav") {
-            cmd += "exec ffmpeg -y ";
-            if (audioArgs.length > 1) {
-                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
-            } else {
-                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
-            }
-            cmd += "-c:a pcm_s16le \"" + path + "\"";
+            ffmpegArgs += "-c:a pcm_s16le \"" + path + "\"";
         } else if (fmt === "m4a") {
-            cmd += "exec ffmpeg -y ";
-            if (audioArgs.length > 1) {
-                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
-            } else {
-                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
-            }
-            cmd += "-c:a aac -b:a " + bitrate + " \"" + path + "\"";
+            ffmpegArgs += "-c:a aac -b:a " + bitrate + " \"" + path + "\"";
         } else {
             // Default mp3
-            cmd += "exec ffmpeg -y ";
-            if (audioArgs.length > 1) {
-                cmd += "-f pulse -i " + audioArgs[0] + " -f pulse -i " + audioArgs[1] + " -filter_complex amerge=inputs=2 ";
-            } else {
-                cmd += "-f pulse -i " + (audioArgs[0] || "default") + " ";
-            }
-            cmd += "-c:a libmp3lame -b:a " + bitrate + " \"" + path + "\"";
+            ffmpegArgs += "-c:a libmp3lame -b:a " + bitrate + " \"" + path + "\"";
         }
+
+        cmd += "cleanup() { [ -n \"$OLD_BT_PROFILE\" ] && [ -n \"$BT_CARD\" ] && pactl set-card-profile \"$BT_CARD\" \"$OLD_BT_PROFILE\" 2>/dev/null; rm -f " + root.shellQuote(root.recorderPidFile) + "; }; " +
+               "trap cleanup EXIT INT TERM; " +
+               ffmpegArgs + " & REC_PID=$!; echo \"$REC_PID\" > " + root.shellQuote(root.recorderPidFile) + "; " +
+               "command -v dms >/dev/null 2>&1 && ( dms ipc call screenCaptureToolbar onRecorderStarted \"$REC_PID\" 2>/dev/null || dms ipc screenCaptureToolbar onRecorderStarted \"$REC_PID\" 2>/dev/null ); " +
+               "wait $REC_PID; cleanup;";
 
         root.isRecording = true;
         root.isAudioRecording = true;
         root.isPaused = false;
+        root.isMicCaptured = (root.audioSource === "mic" || root.audioSource === "both");
+        root.isMicMuted = false;
         root.recordingElapsed = 0;
         root.lastSavedAudioPath = path;
         root.close();
 
-        Quickshell.execDetached(["bash", "-c", "sleep 0.3; " + cmd]);
+        Quickshell.execDetached(["bash", "-c", cmd]);
 
         if (root.showNotify) {
             Quickshell.execDetached(["notify-send", "Audio Recording Started", "Saving to " + dir]);
@@ -1103,11 +1155,13 @@ PluginComponent {
     }
 
     function stopRecording() {
-        if (root.isAudioRecording) {
-            Quickshell.execDetached(["pkill", "-SIGINT", "-f", "ffmpeg"]);
-        } else {
-            Quickshell.execDetached(["pkill", "-SIGINT", "-f", "gpu-screen-recorder"]);
-        }
+        let pid = root.recorderPid;
+        let pidFile = root.recorderPidFile;
+        let stopCmd = "TARGET_PID=" + (pid > 0 ? pid : "\"\"");
+        stopCmd += "; if [ -z \"$TARGET_PID\" ] && [ -f " + root.shellQuote(pidFile) + " ]; then TARGET_PID=$(cat " + root.shellQuote(pidFile) + " 2>/dev/null); fi";
+        stopCmd += "; if [ -n \"$TARGET_PID\" ] && kill -0 \"$TARGET_PID\" 2>/dev/null; then kill -SIGINT \"$TARGET_PID\" 2>/dev/null; fi";
+        Quickshell.execDetached(["bash", "-c", stopCmd]);
+
         Quickshell.execDetached(["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"]);
         
         let savedPath = root.isAudioRecording ? root.lastSavedAudioPath : root.lastSavedVideoPath;
@@ -1119,9 +1173,11 @@ PluginComponent {
         root.isMicCaptured = false;
         root.isMicMuted = false;
         root.recordingElapsed = 0;
+        root.recorderPid = 0;
 
-        let procName = isAudio ? "[f]fmpeg" : "[g]pu-screen-recorder";
-        let cmdStr = "while pgrep -f '" + procName + "' >/dev/null; do sleep 0.2; done; sleep 0.2; ";
+        let cmdStr = "TARGET_PID=" + (pid > 0 ? pid : "\"\"");
+        cmdStr += "; if [ -z \"$TARGET_PID\" ] && [ -f " + root.shellQuote(pidFile) + " ]; then TARGET_PID=$(cat " + root.shellQuote(pidFile) + " 2>/dev/null); fi; ";
+        cmdStr += "if [ -n \"$TARGET_PID\" ]; then while kill -0 \"$TARGET_PID\" 2>/dev/null; do sleep 0.2; done; else sleep 0.4; fi; sleep 0.2; ";
         if (!isAudio && root.copyVideoFile) {
             cmdStr += "FILE=" + root.shellQuote(savedPath) + "; FILE=\"${FILE/#\\$HOME/$HOME}\"; echo -n \"file://$FILE\" | wl-copy -t text/uri-list; ";
         } else if (root.copyPathOnCapture) {
@@ -1138,20 +1194,26 @@ PluginComponent {
     }
 
     function pauseRecording() {
-        if (root.isAudioRecording) {
-            Quickshell.execDetached(["pkill", "-SIGSTOP", "-f", "ffmpeg"]);
-        } else {
-            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
-        }
+        let pid = root.recorderPid;
+        let pidFile = root.recorderPidFile;
+        let isAudio = root.isAudioRecording;
+        let sig = isAudio ? "-SIGSTOP" : "-SIGUSR2";
+        let cmd = "TARGET_PID=" + (pid > 0 ? pid : "\"\"");
+        cmd += "; if [ -z \"$TARGET_PID\" ] && [ -f " + root.shellQuote(pidFile) + " ]; then TARGET_PID=$(cat " + root.shellQuote(pidFile) + " 2>/dev/null); fi";
+        cmd += "; if [ -n \"$TARGET_PID\" ] && kill -0 \"$TARGET_PID\" 2>/dev/null; then kill " + sig + " \"$TARGET_PID\" 2>/dev/null; fi";
+        Quickshell.execDetached(["bash", "-c", cmd]);
         root.isPaused = true;
     }
 
     function resumeRecording() {
-        if (root.isAudioRecording) {
-            Quickshell.execDetached(["pkill", "-SIGCONT", "-f", "ffmpeg"]);
-        } else {
-            Quickshell.execDetached(["pkill", "-SIGUSR2", "-f", "gpu-screen-recorder"]);
-        }
+        let pid = root.recorderPid;
+        let pidFile = root.recorderPidFile;
+        let isAudio = root.isAudioRecording;
+        let sig = isAudio ? "-SIGCONT" : "-SIGUSR2";
+        let cmd = "TARGET_PID=" + (pid > 0 ? pid : "\"\"");
+        cmd += "; if [ -z \"$TARGET_PID\" ] && [ -f " + root.shellQuote(pidFile) + " ]; then TARGET_PID=$(cat " + root.shellQuote(pidFile) + " 2>/dev/null); fi";
+        cmd += "; if [ -n \"$TARGET_PID\" ] && kill -0 \"$TARGET_PID\" 2>/dev/null; then kill " + sig + " \"$TARGET_PID\" 2>/dev/null; fi";
+        Quickshell.execDetached(["bash", "-c", cmd]);
         root.isPaused = false;
     }
 
@@ -1185,13 +1247,44 @@ PluginComponent {
     }
 
 
+    // Backdrop / Dim Layer (Separate PanelWindow for blur support in Niri / Wayland compositors)
+    PanelWindow {
+        id: bgOverlay
+        visible: overlay.visible
+        color: "transparent"
+
+        WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar:dim"
+        WlrLayershell.layer: WlrLayershell.Overlay
+        WlrLayershell.exclusiveZone: -1
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+        anchors {
+            top: true
+            left: true
+            right: true
+            bottom: true
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: "black"
+            opacity: bgOverlay.visible ? 0.15 : 0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.close()
+            }
+        }
+    }
+
     // -- UI -------------------------------------------------------------------
     PanelWindow {
         id: overlay
         visible: false
         color: "transparent"
 
-        WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar"
+        WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar:bar"
         WlrLayershell.layer: WlrLayershell.Overlay
         WlrLayershell.exclusiveZone: -1
         WlrLayershell.keyboardFocus: overlay.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -1207,6 +1300,49 @@ PluginComponent {
             left: true
             right: true
             bottom: true
+        }
+
+        BackgroundEffect.blurRegion: visible ? toolbarBlurRegion : null
+
+        Region {
+            id: toolbarBlurRegion
+            x: pillContainer.x
+            y: pillContainer.y
+            width: pillContainer.width
+            height: pillContainer.height
+            radius: pillContainer.height / 2
+
+            Region {
+                x: hintPillContainer.x
+                y: hintPillContainer.y
+                width: hintPillContainer.width
+                height: hintPillContainer.height
+                radius: 16
+            }
+
+            Region {
+                x: settingsBubble.visible ? settingsBubble.x : 0
+                y: settingsBubble.visible ? settingsBubble.y : 0
+                width: settingsBubble.visible ? settingsBubble.width : 0
+                height: settingsBubble.visible ? settingsBubble.height : 0
+                radius: 24
+            }
+
+            Region {
+                x: delayBubble.visible ? delayBubble.x : 0
+                y: delayBubble.visible ? delayBubble.y : 0
+                width: delayBubble.visible ? delayBubble.width : 0
+                height: delayBubble.visible ? delayBubble.height : 0
+                radius: 24
+            }
+
+            Region {
+                x: monitorBubble.visible ? monitorBubble.x : 0
+                y: monitorBubble.visible ? monitorBubble.y : 0
+                width: monitorBubble.visible ? monitorBubble.width : 0
+                height: monitorBubble.visible ? monitorBubble.height : 0
+                radius: 24
+            }
         }
 
         Item {
@@ -1274,7 +1410,7 @@ PluginComponent {
                     autoClosePopupTimer.restart();
                     event.accepted = true;
                 } else if (event.key === Qt.Key_C) {
-                    let modes = ["interactive", "monitor", "all"];
+                    let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
                     let idx = modes.indexOf(root.captureMode);
                     if (idx === -1) idx = 0;
                     root.captureMode = modes[(idx + 1) % modes.length];
@@ -1307,7 +1443,7 @@ PluginComponent {
                         root.isVideoMode = false;
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
-                        let modes = ["interactive", "monitor", "all"];
+                        let modes = root.isVideoMode ? ["interactive", "monitor", "all"] : ["interactive", "monitor", "window", "all", "scroll"];
                         let idx = modes.indexOf(root.captureMode);
                         if (idx === -1) idx = 0;
                         if (event.key === Qt.Key_Down) idx = (idx + 1) % modes.length;
@@ -1318,17 +1454,6 @@ PluginComponent {
                     }
                 }
             }
-        }
-
-
-
-        // Background Dim
-        Rectangle {
-            id: dim
-            anchors.fill: parent
-            color: "black"
-            opacity: overlay.visible ? 0.15 : 0
-            Behavior on opacity { NumberAnimation { duration: 150 } }
         }
 
         // Local Tooltip with "above icon" logic - inside the window
@@ -1386,29 +1511,29 @@ PluginComponent {
             Rectangle {
                 id: settingsBubble
                 width: (root.showAdvancedSettings && root.isVideoMode) ? 660 : 340
-                height: root.settingsExpanded ? settingsCol.implicitHeight + 40 : 0
+                readonly property real maxAllowedHeight: (overlay ? overlay.height : 800) - pillContainer.height - 48 - 24 - 16
+                height: root.settingsExpanded ? Math.min(settingsCol.implicitHeight + 40, maxAllowedHeight) : 0
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
 
-                // Position strictly above the right side of the pill
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
                 anchors.right: pillContainer.right
 
                 visible: opacity > 0.01
                 opacity: root.settingsExpanded ? 1 : 0
-                scale: root.settingsExpanded ? 1 : 0.9
+                scale: root.settingsExpanded ? 1 : 0.92
                 transformOrigin: Item.BottomRight
 
-                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                layer.enabled: true
+                layer.enabled: opacity > 0.01 && opacity < 0.99 ? false : true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowVerticalOffset: 8
@@ -1418,26 +1543,37 @@ PluginComponent {
 
                 // Triangle pointer
                 Rectangle {
+                    id: settingsPointer
                     width: 16; height: 16
                     color: settingsBubble.color
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
                     x: {
-                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
-                        return settingsBubble.mapFromItem(settingsBtn, settingsBtn.width / 2, 0).x - width / 2;
+                        try {
+                            let pt = settingsBubble.mapFromItem(settingsBtn, settingsBtn.width / 2, 0);
+                            return Math.max(16, Math.min(settingsBubble.width - width - 16, pt.x - width / 2));
+                        } catch (e) {
+                            return settingsBubble.width - 32;
+                        }
                     }
                     border.width: 1; border.color: settingsBubble.border.color
                     z: -1
                 }
 
-                ColumnLayout {
-                    id: settingsCol
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                Flickable {
+                    id: settingsFlick
+                    anchors.fill: parent
                     anchors.margins: 20
-                    spacing: 12
+                    contentWidth: width
+                    contentHeight: settingsCol.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    ColumnLayout {
+                        id: settingsCol
+                        width: settingsFlick.width
+                        spacing: 12
 
                     RowLayout {
                         spacing: 8
@@ -1450,89 +1586,107 @@ PluginComponent {
                         spacing: 12
                         
                         ColumnLayout {
+                            Layout.preferredWidth: (root.showAdvancedSettings && root.isVideoMode) ? Math.floor((settingsCol.width - 12) / 2) : settingsCol.width
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignTop
-                            spacing: 12
-                    // Toggles Segment
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: togglesCol.implicitHeight
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
-                        border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        clip: true
+                            spacing: 8
 
-                        Column {
-                            id: togglesCol
-                            width: parent.width
+                            // Screenshot Toggles (Segmented Stack)
+                            Column {
+                                id: photoTogglesCol
+                                Layout.fillWidth: true
+                                spacing: 2
+                                visible: root.mediaMode === "photo"
 
-                            SettingToggle {
-                                label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.copyToClipboard = !root.copyToClipboard; root._save("copyToClipboard", root.copyToClipboard) }
+                                SettingToggle {
+                                    label: "Copy to Clipboard"; iconName: "content_copy"; active: root.copyToClipboard
+                                    isFirst: true
+                                    onToggled: { root.copyToClipboard = !root.copyToClipboard; root._save("copyToClipboard", root.copyToClipboard) }
+                                }
+                                SettingToggle {
+                                    label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
+                                    onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
+                                }
+                                SettingToggle { 
+                                    label: "Screenshot Editor"; iconName: "output"; active: root.stdout
+                                    onToggled: { root.stdout = !root.stdout; root._save("stdout", root.stdout) }
+                                }
+                                SettingToggle { 
+                                    label: "Enable Editor Shortcut"; iconName: "keyboard"; active: root.enableEditorShortcut
+                                    onToggled: { root.enableEditorShortcut = !root.enableEditorShortcut; root._save("enableEditorShortcut", root.enableEditorShortcut) }
+                                }
+                                SettingToggle { 
+                                    label: "Swap Shortcuts"; iconName: "swap_horiz"; active: root.swapCaptureKeys
+                                    onToggled: { root.swapCaptureKeys = !root.swapCaptureKeys; root._save("swapCaptureKeys", root.swapCaptureKeys) }
+                                }
+                                SettingToggle {
+                                    label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
+                                    onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
+                                }
+                                SettingToggle {
+                                    label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                    isLast: true
+                                    onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
+                                }
                             }
-                            SettingToggle {
-                                label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
-                            }
-                            SettingToggle { 
-                                label: "Screenshot Editor"; iconName: "output"; active: root.stdout
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.stdout = !root.stdout; root._save("stdout", root.stdout) }
-                            }
-                            SettingToggle { 
-                                label: "Enable Editor Shortcut"; iconName: "keyboard"; active: root.enableEditorShortcut
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.enableEditorShortcut = !root.enableEditorShortcut; root._save("enableEditorShortcut", root.enableEditorShortcut) }
-                            }
-                            SettingToggle { 
-                                label: "Swap Shortcuts"; iconName: "swap_horiz"; active: root.swapCaptureKeys
-                                visible: root.mediaMode === "photo"
-                                onToggled: { root.swapCaptureKeys = !root.swapCaptureKeys; root._save("swapCaptureKeys", root.swapCaptureKeys) }
-                            }
-                            SettingToggle {
-                                label: "Record System Audio"; iconName: "graphic_eq"; active: root.recordAudio
-                                visible: root.isVideoMode
-                                onToggled: { root.recordAudio = !root.recordAudio; root._save("recordAudio", root.recordAudio) }
-                            }
-                            SettingToggle {
-                                label: "Record Microphone"; iconName: "mic"; active: root.recordMic
-                                visible: root.isVideoMode
-                                onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
-                            }
-                            SettingToggle {
-                                label: "Copy Video File"; iconName: "content_copy"; active: root.copyVideoFile
-                                visible: root.isVideoMode
-                                onToggled: { root.copyVideoFile = !root.copyVideoFile; root._save("copyVideoFile", root.copyVideoFile) }
-                            }
-                            SettingToggle {
-                                label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
-                                visible: root.mediaMode === "photo" || root.isVideoMode
-                                onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
-                            }
-                            SettingToggle {
-                                label: "Show Notification"; iconName: "notifications"; active: root.showNotify
-                                onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
-                            }
-                            SettingToggle { 
-                                label: "Show Recording Pill"; iconName: "smart_button"; active: root.showRecPill
+
+                            // Video & Audio Recording Toggles (Segmented Stack)
+                            Column {
+                                id: videoTogglesCol
+                                Layout.fillWidth: true
+                                spacing: 2
                                 visible: root.isVideoMode || root.mediaMode === "audio"
-                                isLast: true
-                                onToggled: { root.showRecPill = !root.showRecPill; root._save("showRecPill", root.showRecPill) }
+
+                                SettingToggle {
+                                    label: "Record System Audio"; iconName: "graphic_eq"; active: root.recordAudio
+                                    visible: root.isVideoMode
+                                    isFirst: true
+                                    onToggled: { root.recordAudio = !root.recordAudio; root._save("recordAudio", root.recordAudio) }
+                                }
+                                SettingToggle {
+                                    label: "Record Microphone"; iconName: "mic"; active: root.recordMic
+                                    visible: root.isVideoMode
+                                    onToggled: { root.recordMic = !root.recordMic; root._save("recordMic", root.recordMic) }
+                                }
+                                SettingToggle {
+                                    label: "Copy Video File"; iconName: "content_copy"; active: root.copyVideoFile
+                                    visible: root.isVideoMode
+                                    onToggled: { root.copyVideoFile = !root.copyVideoFile; root._save("copyVideoFile", root.copyVideoFile) }
+                                }
+                                SettingToggle {
+                                    label: "Show Mouse Pointer"; iconName: "mouse"; active: root.showPointer
+                                    visible: root.isVideoMode
+                                    onToggled: { root.showPointer = !root.showPointer; root._save("showPointer", root.showPointer) }
+                                }
+                                SettingToggle {
+                                    label: "Show Notification"; iconName: "notifications"; active: root.showNotify
+                                    isFirst: root.mediaMode === "audio"
+                                    onToggled: { root.showNotify = !root.showNotify; root._save("showNotify", root.showNotify) }
+                                }
+                                SettingToggle { 
+                                    label: "Show Recording Pill"; iconName: "smart_button"; active: root.showRecPill
+                                    isLast: !root.isVideoMode
+                                    onToggled: { root.showRecPill = !root.showRecPill; root._save("showRecPill", root.showRecPill) }
+                                }
+                                SettingToggle {
+                                    label: "Show Advanced Settings"; iconName: "tune"; active: root.showAdvancedSettings
+                                    visible: root.isVideoMode
+                                    isLast: true
+                                    onToggled: { 
+                                        root.showAdvancedSettings = !root.showAdvancedSettings; 
+                                        root._save("showAdvancedSettings", root.showAdvancedSettings);
+                                    }
+                                }
                             }
-                        }
-                    }
 
                     // Audio Source Segment (Audio Mode)
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: audioSourceCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: audioSourceCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.mediaMode === "audio"
 
                         ColumnLayout {
@@ -1543,46 +1697,28 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Audio Source"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "mic"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Audio Source"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 34
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    var current = audioSourceGroup.currentIndex;
-                                    var newIdx = Math.max(0, current - 1);
-                                    audioSourceGroup.onSelectionChanged(newIdx, true);
-                                }
-                                Keys.onRightPressed: {
-                                    var current = audioSourceGroup.currentIndex;
-                                    var newIdx = Math.min(2, current + 1);
-                                    audioSourceGroup.onSelectionChanged(newIdx, true);
-                                }
 
-                                DankButtonGroup {
-                                    id: audioSourceGroup
-                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
-                                    anchors.centerIn: parent
-                                    scale: 0.95; transformOrigin: Item.Center
-                                    model: ["System", "Mic", "Both"]
-                                    currentIndex: {
-                                        if (root.audioSource === "system") return 0;
-                                        if (root.audioSource === "both") return 2;
-                                        return 1;
-                                    }
-                                    onSelectionChanged: function(idx, sel) {
-                                        if (sel) {
-                                            var sources = ["system", "mic", "both"];
-                                            root.audioSource = sources[idx];
-                                            root._save("audioSource", root.audioSource);
-                                        }
-                                    }
+                            SegmentedBar {
+                                Layout.fillWidth: true
+                                model: ["System", "Mic", "Both"]
+                                currentIndex: {
+                                    if (root.audioSource === "system") return 0;
+                                    if (root.audioSource === "both") return 2;
+                                    return 1;
+                                }
+                                onSelectionChanged: function(idx, val) {
+                                    var sources = ["system", "mic", "both"];
+                                    root.audioSource = sources[idx];
+                                    root._save("audioSource", root.audioSource);
                                 }
                             }
                         }
@@ -1591,11 +1727,11 @@ PluginComponent {
                     // Format Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: formatCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: formatCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         
                         ColumnLayout {
                             id: formatCol
@@ -1605,71 +1741,53 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: root.mediaMode === "audio" ? "audio_file" : (root.isVideoMode ? "movie" : "image"); size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: root.mediaMode === "audio" ? "Audio Format" : (root.isVideoMode ? "Video Format" : "Image Format"); font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { 
+                                        anchors.centerIn: parent
+                                        name: root.mediaMode === "audio" ? "audio_file" : (root.isVideoMode ? "movie" : "image")
+                                        size: 16
+                                        color: Theme.surfaceVariantText 
+                                    }
+                                }
+                                StyledText { text: root.mediaMode === "audio" ? "Audio Format" : (root.isVideoMode ? "Video Format" : "Image Format"); font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 36
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    if (root.mediaMode === "audio") return;
-                                    var maxIdx = 2;
-                                    var current = formatGroup.currentIndex;
-                                    var newIdx = Math.max(0, current - 1);
-                                    formatGroup.onSelectionChanged(newIdx, true);
-                                }
-                                Keys.onRightPressed: {
-                                    if (root.mediaMode === "audio") return;
-                                    var maxIdx = 2;
-                                    var current = formatGroup.currentIndex;
-                                    var newIdx = Math.min(maxIdx, current + 1);
-                                    formatGroup.onSelectionChanged(newIdx, true);
-                                }
 
-                                DankDropdown {
-                                    visible: root.mediaMode === "audio"
-                                    width: parent.width; height: 32
-                                    anchors.centerIn: parent
-                                    compactMode: true
-                                    currentValue: root.audioFormat.toUpperCase()
-                                    options: ["MP3", "OPUS", "FLAC", "WAV", "M4A", "OGG"]
-                                    onValueChanged: {
-                                        root.audioFormat = String(value).toLowerCase();
-                                        root._save("audioFormat", root.audioFormat);
+                            DankDropdown {
+                                visible: root.mediaMode === "audio"
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: root.audioFormat.toUpperCase()
+                                options: ["MP3", "OPUS", "FLAC", "WAV", "M4A", "OGG"]
+                                onValueChanged: {
+                                    root.audioFormat = String(value).toLowerCase();
+                                    root._save("audioFormat", root.audioFormat);
+                                }
+                            }
+
+                            SegmentedBar {
+                                visible: root.mediaMode !== "audio"
+                                Layout.fillWidth: true
+                                model: root.isVideoMode ? ["MP4", "MKV", "FLV"] : ["PNG", "JPG", "PPM"]
+                                currentIndex: {
+                                    if (root.isVideoMode) {
+                                        return root.videoFormat === "mp4" ? 0 : (root.videoFormat === "mkv" ? 1 : 2);
+                                    } else {
+                                        return root.format === "png" ? 0 : (root.format === "jpg" ? 1 : 2);
                                     }
                                 }
-
-                                DankButtonGroup {
-                                    id: formatGroup
-                                    visible: root.mediaMode !== "audio"
-                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
-                                    anchors.centerIn: parent
-                                    scale: 0.95; transformOrigin: Item.Center
-                                    model: root.isVideoMode ? ["MP4", "MKV", "FLV"] : ["PNG", "JPG", "PPM"]
-                                    currentIndex: {
-                                        if (root.isVideoMode) {
-                                            return root.videoFormat === "mp4" ? 0 : (root.videoFormat === "mkv" ? 1 : 2);
-                                        } else {
-                                            return root.format === "png" ? 0 : (root.format === "jpg" ? 1 : 2);
-                                        }
-                                    }
-                                    onSelectionChanged: function(idx, sel) {
-                                        if (sel) {
-                                            if (root.isVideoMode) {
-                                                var vfmts = ["mp4", "mkv", "flv"];
-                                                root.videoFormat = vfmts[idx];
-                                                root._save("videoFormat", root.videoFormat);
-                                            } else {
-                                                var fmts = ["png", "jpg", "ppm"];
-                                                root.format = fmts[idx];
-                                                root._save("format", root.format);
-                                            }
-                                        }
+                                onSelectionChanged: function(idx, val) {
+                                    if (root.isVideoMode) {
+                                        var vfmts = ["mp4", "mkv", "flv"];
+                                        root.videoFormat = vfmts[idx];
+                                        root._save("videoFormat", root.videoFormat);
+                                    } else {
+                                        var fmts = ["png", "jpg", "ppm"];
+                                        root.format = fmts[idx];
+                                        root._save("format", root.format);
                                     }
                                 }
                             }
@@ -1679,11 +1797,11 @@ PluginComponent {
                     // Audio Bitrate Segment (Audio Mode)
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: audioBitrateCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: audioBitrateCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.mediaMode === "audio"
 
                         ColumnLayout {
@@ -1694,46 +1812,28 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "equalizer"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Audio Bitrate"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "equalizer"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Audio Bitrate"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 34
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    var current = audioBitrateGroup.currentIndex;
-                                    var newIdx = Math.max(0, current - 1);
-                                    audioBitrateGroup.onSelectionChanged(newIdx, true);
-                                }
-                                Keys.onRightPressed: {
-                                    var current = audioBitrateGroup.currentIndex;
-                                    var newIdx = Math.min(3, current + 1);
-                                    audioBitrateGroup.onSelectionChanged(newIdx, true);
-                                }
 
-                                DankButtonGroup {
-                                    id: audioBitrateGroup
-                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
-                                    anchors.centerIn: parent
-                                    scale: 0.95; transformOrigin: Item.Center
-                                    model: ["128k", "192k", "256k", "320k"]
-                                    currentIndex: {
-                                        var bitrates = ["128k", "192k", "256k", "320k"];
-                                        var idx = bitrates.indexOf(root.audioBitrate);
-                                        return idx >= 0 ? idx : 1;
-                                    }
-                                    onSelectionChanged: function(idx, sel) {
-                                        if (sel) {
-                                            var bitrates = ["128k", "192k", "256k", "320k"];
-                                            root.audioBitrate = bitrates[idx];
-                                            root._save("audioBitrate", root.audioBitrate);
-                                        }
-                                    }
+                            SegmentedBar {
+                                Layout.fillWidth: true
+                                model: ["128k", "192k", "256k", "320k"]
+                                currentIndex: {
+                                    var bitrates = ["128k", "192k", "256k", "320k"];
+                                    var idx = bitrates.indexOf(root.audioBitrate);
+                                    return idx >= 0 ? idx : 1;
+                                }
+                                onSelectionChanged: function(idx, val) {
+                                    var bitrates = ["128k", "192k", "256k", "320k"];
+                                    root.audioBitrate = bitrates[idx];
+                                    root._save("audioBitrate", root.audioBitrate);
                                 }
                             }
                         }
@@ -1742,11 +1842,11 @@ PluginComponent {
                     // Mic Selector & Test Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: micCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: micCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: (root.isVideoMode && root.recordMic) || (root.mediaMode === "audio" && (root.audioSource === "mic" || root.audioSource === "both"))
 
                         ColumnLayout {
@@ -1757,60 +1857,32 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "mic"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Mic Selector"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "mic"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Mic Selector"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 36
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    var idx = -1;
-                                    for (var i = 0; i < root.micList.length; i++) {
-                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
-                                    }
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.max(0, idx - 1);
-                                    if (root.micList.length > 0) {
-                                        root.videoMic = root.micList[newIdx].value;
-                                        root._save("videoMic", root.videoMic);
-                                    }
-                                }
-                                Keys.onRightPressed: {
-                                    var idx = -1;
-                                    for (var i = 0; i < root.micList.length; i++) {
-                                        if (root.micList[i].value === root.videoMic) { idx = i; break; }
-                                    }
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.min(root.micList.length - 1, idx + 1);
-                                    if (root.micList.length > 0) {
-                                        root.videoMic = root.micList[newIdx].value;
-                                        root._save("videoMic", root.videoMic);
-                                    }
-                                }
 
-                                DankDropdown {
-                                    width: parent.width; height: 32
-                                    anchors.centerIn: parent
-                                    compactMode: true
-                                    currentValue: {
-                                        for (var i = 0; i < root.micList.length; i++) {
-                                            if (root.micList[i].value === root.videoMic) return root.micList[i].label;
-                                        }
-                                        return root.videoMic || "Default";
+                            DankDropdown {
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: {
+                                    for (var i = 0; i < root.micList.length; i++) {
+                                        if (root.micList[i].value === root.videoMic) return root.micList[i].label;
                                     }
-                                    options: root.micList.map(function(item) { return item.label; })
-                                    onValueChanged: {
-                                        for (var i = 0; i < root.micList.length; i++) {
-                                            if (root.micList[i].label === value) {
-                                                root.videoMic = root.micList[i].value;
-                                                root._save("videoMic", root.videoMic);
-                                                break;
-                                            }
+                                    return root.videoMic || "Default";
+                                }
+                                options: root.micList.map(function(item) { return item.label; })
+                                onValueChanged: {
+                                    for (var i = 0; i < root.micList.length; i++) {
+                                        if (root.micList[i].label === value) {
+                                            root.videoMic = root.micList[i].value;
+                                            root._save("videoMic", root.videoMic);
+                                            break;
                                         }
                                     }
                                 }
@@ -1878,22 +1950,25 @@ PluginComponent {
                                                 micTestProcess.running = false;
                                                 root.isTestingMic = false;
                                             } else {
-                                                Qt.createQmlObject('import QtQuick 2.15; import DankMaterialShell 1.0; Process { command: ["bash", "-c", "touch /tmp/mic_stop"]; running: true }', testMicMa2, "stopSignalProc");
+                                                micTestStopProcess.running = false;
+                                                micTestStopProcess.running = true;
                                             }
                                         } else {
                                             root.isTestingMic = true;
                                             root.isPlayingMic = false;
                                             root.micTestCountdown = 3;
                                             var mic = root.videoMic;
-                                            var recordCmd = "killall -9 pw-record pw-play 2>/dev/null; rm -f /tmp/mic_test.wav /tmp/mic_stop; ";
+                                            var testWav = root.shellQuote(root.micTestFile);
+                                            var stopFile = root.shellQuote(root.micTestStopFile);
+                                            var recordCmd = "rm -f " + testWav + " " + stopFile + "; ";
                                             recordCmd += "echo COUNTDOWN 3; sleep 1; echo COUNTDOWN 2; sleep 1; echo COUNTDOWN 1; sleep 1; echo RECORDING; ";
                                             if (mic && mic !== "default" && mic !== "default_input") {
-                                                recordCmd += "pw-record --target " + mic + " /tmp/mic_test.wav & REC_PID=$!; ";
+                                                recordCmd += "pw-record --target " + mic + " " + testWav + " & REC_PID=$!; ";
                                             } else {
-                                                recordCmd += "pw-record /tmp/mic_test.wav & REC_PID=$!; ";
+                                                recordCmd += "pw-record " + testWav + " & REC_PID=$!; ";
                                             }
-                                            recordCmd += "for i in {1..50}; do if [ -f /tmp/mic_stop ]; then break; fi; sleep 0.1; done; ";
-                                            recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 6; echo PLAYING; pw-play /tmp/mic_test.wav; fi";
+                                            recordCmd += "for i in {1..50}; do if [ -f " + stopFile + " ]; then break; fi; sleep 0.1; done; ";
+                                            recordCmd += "if kill -0 $REC_PID 2>/dev/null; then kill -INT $REC_PID 2>/dev/null; echo PROCESSING; wait $REC_PID 2>/dev/null; sleep 1; echo PLAYING; pw-play " + testWav + " & PLAY_PID=$!; wait $PLAY_PID 2>/dev/null; rm -f " + testWav + " " + stopFile + "; fi";
                                             micTestProcess.command = ["bash", "-c", recordCmd];
                                             micTestProcess.running = true;
                                         }
@@ -1906,11 +1981,11 @@ PluginComponent {
                     // JPG Quality Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: qualityCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: qualityCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.format === "jpg" && root.mediaMode === "photo" && !root.isVideoMode
 
                         ColumnLayout {
@@ -1921,12 +1996,17 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "high_quality"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "JPG Quality"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "high_quality"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "JPG Quality"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
                             DankTextField {
-                                Layout.fillWidth: true; height: 28
+                                Layout.fillWidth: true; height: 32
                                 font.pixelSize: 12
                                 text: root.quality.toString()
                                 placeholderText: "90"
@@ -1939,14 +2019,59 @@ PluginComponent {
                         }
                     }
 
+                    // Scroll Interval Segment (Scrolling Screenshot)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: scrollIntervalCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                        visible: root.mediaMode === "photo" && !root.isVideoMode && root.captureMode === "scroll"
+
+                        ColumnLayout {
+                            id: scrollIntervalCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            spacing: 8
+
+                            RowLayout {
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "swap_vert"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Scroll Interval (ms)"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
+                            }
+                            DankTextField {
+                                Layout.fillWidth: true; height: 32
+                                font.pixelSize: 12
+                                text: root.scrollInterval.toString()
+                                placeholderText: "45"
+                                activeFocusOnTab: false
+                                onEditingFinished: {
+                                    var v = parseInt(text);
+                                    if (!isNaN(v)) {
+                                        v = Math.max(30, Math.min(1000, v));
+                                        root.scrollInterval = v;
+                                        root._save("scrollInterval", v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Custom Directory Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: pathCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: pathCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         
                         ColumnLayout {
                             id: pathCol
@@ -1956,12 +2081,17 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "folder"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: root.mediaMode === "audio" ? "Audio Directory" : (root.isVideoMode ? "Video Directory" : "Screenshot Directory"); font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "folder"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: root.mediaMode === "audio" ? "Audio Directory" : (root.isVideoMode ? "Video Directory" : "Screenshot Directory"); font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
                             DankTextField {
-                                Layout.fillWidth: true; height: 28
+                                Layout.fillWidth: true; height: 32
                                 font.pixelSize: 12
                                 text: root.mediaMode === "audio" ? root.audioCustomPath : (root.isVideoMode ? root.videoCustomPath : root.customPath)
                                 placeholderText: root.mediaMode === "audio" ? "~/Music" : (root.isVideoMode ? "~/Videos" : "~/Pictures/Screenshots")
@@ -1984,18 +2114,20 @@ PluginComponent {
                         }
 
                         ColumnLayout {
+                            Layout.preferredWidth: Math.floor((settingsCol.width - 12) / 2)
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignTop
-                            spacing: 12
+                            spacing: 8
                             visible: root.showAdvancedSettings && root.isVideoMode
+
                     // Video FPS Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: videoFpsCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: videoFpsCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.isVideoMode
 
                         ColumnLayout {
@@ -2006,48 +2138,28 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "speed"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Video FPS"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "speed"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Video FPS"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 34
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    var maxIdx = 2;
-                                    var current = fpsGroup.currentIndex;
-                                    var newIdx = Math.max(0, current - 1);
-                                    fpsGroup.onSelectionChanged(newIdx, true);
-                                }
-                                Keys.onRightPressed: {
-                                    var maxIdx = 2;
-                                    var current = fpsGroup.currentIndex;
-                                    var newIdx = Math.min(maxIdx, current + 1);
-                                    fpsGroup.onSelectionChanged(newIdx, true);
-                                }
 
-                                DankButtonGroup {
-                                    id: fpsGroup
-                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
-                                    anchors.centerIn: parent
-                                    scale: 0.95; transformOrigin: Item.Center
-                                    model: ["24 FPS", "30 FPS", "60 FPS"]
-                                    currentIndex: {
-                                        if (root.videoFPS == 30) return 1;
-                                        if (root.videoFPS == 60) return 2;
-                                        return 0; // 24
-                                    }
-                                    onSelectionChanged: function(idx, sel) {
-                                        if (sel) {
-                                            var fps = [24, 30, 60];
-                                            root.videoFPS = fps[idx];
-                                            root._save("videoFPS", root.videoFPS);
-                                        }
-                                    }
+                            SegmentedBar {
+                                Layout.fillWidth: true
+                                model: ["24 FPS", "30 FPS", "60 FPS"]
+                                currentIndex: {
+                                    if (root.videoFPS == 30) return 1;
+                                    if (root.videoFPS == 60) return 2;
+                                    return 0; // 24
+                                }
+                                onSelectionChanged: function(idx, val) {
+                                    var fps = [24, 30, 60];
+                                    root.videoFPS = fps[idx];
+                                    root._save("videoFPS", root.videoFPS);
                                 }
                             }
                         }
@@ -2056,11 +2168,11 @@ PluginComponent {
                     // Video Quality Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: videoQualityCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: videoQualityCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.isVideoMode
 
                         ColumnLayout {
@@ -2071,49 +2183,29 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "high_quality"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Video Quality (CRF/Preset)"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "high_quality"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Video Quality (CRF/Preset)"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 34
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                Keys.onLeftPressed: {
-                                    var maxIdx = 3;
-                                    var current = qualityGroup.currentIndex;
-                                    var newIdx = Math.max(0, current - 1);
-                                    qualityGroup.onSelectionChanged(newIdx, true);
-                                }
-                                Keys.onRightPressed: {
-                                    var maxIdx = 3;
-                                    var current = qualityGroup.currentIndex;
-                                    var newIdx = Math.min(maxIdx, current + 1);
-                                    qualityGroup.onSelectionChanged(newIdx, true);
-                                }
 
-                                DankButtonGroup {
-                                    id: qualityGroup
-                                    width: parent.width; buttonHeight: 30; minButtonWidth: 54
-                                    anchors.centerIn: parent
-                                    scale: 0.95; transformOrigin: Item.Center
-                                    model: ["Med", "High", "V.High", "Ultra"]
-                                    currentIndex: {
-                                        if (root.videoQuality === "high") return 1;
-                                        if (root.videoQuality === "very_high") return 2;
-                                        if (root.videoQuality === "ultra") return 3;
-                                        return 0;
-                                    }
-                                    onSelectionChanged: function(idx, sel) {
-                                        if (sel) {
-                                            var q = ["medium", "high", "very_high", "ultra"];
-                                            root.videoQuality = q[idx];
-                                            root._save("videoQuality", root.videoQuality);
-                                        }
-                                    }
+                            SegmentedBar {
+                                Layout.fillWidth: true
+                                model: ["Med", "High", "V.High", "Ultra"]
+                                currentIndex: {
+                                    if (root.videoQuality === "high") return 1;
+                                    if (root.videoQuality === "very_high") return 2;
+                                    if (root.videoQuality === "ultra") return 3;
+                                    return 0;
+                                }
+                                onSelectionChanged: function(idx, val) {
+                                    var q = ["medium", "high", "very_high", "ultra"];
+                                    root.videoQuality = q[idx];
+                                    root._save("videoQuality", root.videoQuality);
                                 }
                             }
                         }
@@ -2122,11 +2214,11 @@ PluginComponent {
                     // Video Codec Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: videoCodecCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: videoCodecCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.isVideoMode && root.showAdvancedSettings
 
                         ColumnLayout {
@@ -2137,52 +2229,32 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "settings_applications"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Video Codec"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "settings_applications"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Video Codec"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 36
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                property var keys: ["auto", "av1", "av1_10bit", "av1_hdr", "h264"]
-                                
-                                Keys.onLeftPressed: {
-                                    var idx = keys.indexOf(root.videoCodec);
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.max(0, idx - 1);
-                                    root.videoCodec = keys[newIdx];
-                                    root._save("videoCodec", root.videoCodec);
-                                }
-                                Keys.onRightPressed: {
-                                    var idx = keys.indexOf(root.videoCodec);
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.min(keys.length - 1, idx + 1);
-                                    root.videoCodec = keys[newIdx];
-                                    root._save("videoCodec", root.videoCodec);
-                                }
 
-                                DankDropdown {
-                                    width: parent.width; height: 32
-                                    anchors.centerIn: parent
-                                    compactMode: true
-                                    currentValue: {
-                                        var codes = {"auto": "Auto (Recomended)", "av1": "AV1", "av1_10bit": "AV1 (10 Bit)", "av1_hdr": "AV1 (HDR)", "h264": "H.264 SE (Not Recomended)"};
-                                        return codes[root.videoCodec] || "Auto (Recomended)";
-                                    }
-                                    options: ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"]
-                                    onValueChanged: {
-                                        var opts = ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"];
-                                        var vals = ["auto", "av1", "av1_10bit", "av1_hdr", "h264"];
-                                        for (var i = 0; i < opts.length; i++) {
-                                            if (opts[i] === String(value)) {
-                                                root.videoCodec = vals[i];
-                                                root._save("videoCodec", root.videoCodec);
-                                                break;
-                                            }
+                            DankDropdown {
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: {
+                                    var codes = {"auto": "Auto (Recomended)", "av1": "AV1", "av1_10bit": "AV1 (10 Bit)", "av1_hdr": "AV1 (HDR)", "h264": "H.264 SE (Not Recomended)"};
+                                    return codes[root.videoCodec] || "Auto (Recomended)";
+                                }
+                                options: ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"]
+                                onValueChanged: {
+                                    var opts = ["Auto (Recomended)", "AV1", "AV1 (10 Bit)", "AV1 (HDR)", "H.264 SE (Not Recomended)"];
+                                    var vals = ["auto", "av1", "av1_10bit", "av1_hdr", "h264"];
+                                    for (var i = 0; i < opts.length; i++) {
+                                        if (opts[i] === String(value)) {
+                                            root.videoCodec = vals[i];
+                                            root._save("videoCodec", root.videoCodec);
+                                            break;
                                         }
                                     }
                                 }
@@ -2193,11 +2265,11 @@ PluginComponent {
                     // Audio Codec Segment
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: audioCodecCol.implicitHeight + 24
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
+                        Layout.preferredHeight: audioCodecCol.implicitHeight + 20
+                        radius: Theme.cornerRadius || 12
+                        color: Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5)
                         border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
+                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
                         visible: root.isVideoMode && root.showAdvancedSettings
 
                         ColumnLayout {
@@ -2208,64 +2280,41 @@ PluginComponent {
                             spacing: 8
 
                             RowLayout {
-                                spacing: 12
-                                DankIcon { name: "audio_file"; size: 18; color: Theme.surfaceVariantText }
-                                StyledText { text: "Audio Codec"; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    color: Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    DankIcon { anchors.centerIn: parent; name: "audio_file"; size: 16; color: Theme.surfaceVariantText }
+                                }
+                                StyledText { text: "Audio Codec"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.surfaceText; Layout.fillWidth: true }
                             }
-                            Rectangle {
-                                Layout.fillWidth: true; height: 36
-                                color: activeFocus ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : "transparent"
-                                radius: 8
-                                activeFocusOnTab: visible
-                                focus: root.settingsExpanded
-                                
-                                property var keys: ["opus", "aac"]
-                                
-                                Keys.onLeftPressed: {
-                                    var idx = keys.indexOf(root.audioCodec);
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.max(0, idx - 1);
-                                    root.audioCodec = keys[newIdx];
-                                    root._save("audioCodec", root.audioCodec);
-                                }
-                                Keys.onRightPressed: {
-                                    var idx = keys.indexOf(root.audioCodec);
-                                    if (idx === -1) idx = 0;
-                                    var newIdx = Math.min(keys.length - 1, idx + 1);
-                                    root.audioCodec = keys[newIdx];
-                                    root._save("audioCodec", root.audioCodec);
-                                }
 
-                                DankDropdown {
-                                    width: parent.width; height: 32
-                                    anchors.centerIn: parent
-                                    compactMode: true
-                                    currentValue: {
-                                        var codes = {"opus": "Opus (Recomended)", "aac": "AAC"};
-                                        return codes[root.audioCodec] || "AAC";
-                                    }
-                                    options: ["Opus (Recomended)", "AAC"]
-                                    onValueChanged: {
-                                        var opts = ["Opus (Recomended)", "AAC"];
-                                        var vals = ["opus", "aac"];
-                                        for (var i = 0; i < opts.length; i++) {
-                                            if (opts[i] === String(value)) {
-                                                root.audioCodec = vals[i];
-                                                root._save("audioCodec", root.audioCodec);
-                                                break;
-                                            }
+                            DankDropdown {
+                                Layout.fillWidth: true; height: 32
+                                compactMode: true
+                                currentValue: {
+                                    var codes = {"opus": "Opus (Recomended)", "aac": "AAC"};
+                                    return codes[root.audioCodec] || "AAC";
+                                }
+                                options: ["Opus (Recomended)", "AAC"]
+                                onValueChanged: {
+                                    var opts = ["Opus (Recomended)", "AAC"];
+                                    var vals = ["opus", "aac"];
+                                    for (var i = 0; i < opts.length; i++) {
+                                        if (opts[i] === String(value)) {
+                                            root.audioCodec = vals[i];
+                                            root._save("audioCodec", root.audioCodec);
+                                            break;
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-
-
-
-                                        }
+                        }
                     }
+                }
                 }
             }
 
@@ -2277,25 +2326,34 @@ PluginComponent {
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
                 
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.right: pillContainer.right
-                anchors.rightMargin: 0 // Flush right to match settingsBubble
+                x: {
+                    try {
+                        let btnCenterInPill = delayBtn.mapToItem(pillContainer, delayBtn.width / 2, 0).x;
+                        let targetX = pillContainer.x + btnCenterInPill - width / 2;
+                        let minX = 16;
+                        let maxX = (overlay ? overlay.width : 1920) - width - 16;
+                        return Math.max(minX, Math.min(maxX, targetX));
+                    } catch (e) {
+                        return pillContainer.x + pillContainer.width - width;
+                    }
+                }
                 
                 visible: opacity > 0.01
                 opacity: root.delayExpanded ? 1 : 0
-                scale: root.delayExpanded ? 1 : 0.9
-                transformOrigin: Item.BottomRight
+                scale: root.delayExpanded ? 1 : 0.92
+                transformOrigin: Item.Bottom
                 
-                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                layer.enabled: true
+                layer.enabled: opacity > 0.01 && opacity < 0.99 ? false : true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowVerticalOffset: 8
@@ -2305,14 +2363,19 @@ PluginComponent {
 
                 // Triangle pointer
                 Rectangle {
+                    id: delayPointer
                     width: 16; height: 16
                     color: delayBubble.color
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
                     x: {
-                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
-                        return delayBubble.mapFromItem(delayBtn, delayBtn.width / 2, 0).x - width / 2;
+                        try {
+                            let pt = delayBubble.mapFromItem(delayBtn, delayBtn.width / 2, 0);
+                            return Math.max(16, Math.min(delayBubble.width - width - 16, pt.x - width / 2));
+                        } catch (e) {
+                            return delayBubble.width / 2 - width / 2;
+                        }
                     }
                     border.width: 1; border.color: delayBubble.border.color
                     z: -1
@@ -2332,38 +2395,30 @@ PluginComponent {
                         StyledText { text: "Capture Delay"; font.bold: true; font.pixelSize: 15; color: Theme.surfaceText; Layout.fillWidth: true }
                     }
 
-                    // Selection Segment
-                    Rectangle {
+                    // Selection Segment Stack
+                    Column {
+                        id: delayOptionsCol
                         Layout.fillWidth: true
-                        Layout.preferredHeight: delayOptionsCol.implicitHeight
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
-                        border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        clip: true
+                        spacing: 2
                         
-                        Column {
-                            id: delayOptionsCol
-                            width: parent.width
-                            
-                            Repeater {
-                                model: [
-                                    {label: "No Delay", value: 0, icon: "timer_off"},
-                                    {label: "3 Seconds", value: 3, icon: "timer_3"},
-                                    {label: "5 Seconds", value: 5, icon: "timer_5"},
-                                    {label: "10 Seconds", value: 10, icon: "timer_10"}
-                                ]
-                                delegate: SettingToggle {
-                                    label: modelData.label; iconName: modelData.icon
-                                    active: root.delaySeconds === modelData.value
-                                    isOption: true // Shows a checkmark instead of a switch
-                                    isLast: index === 3
-                                    isHighlighted: root.delayExpanded && index === root.delaySelectedIndex
-                                    onToggled: {
-                                        root.delaySeconds = modelData.value;
-                                        root._save("delaySeconds", root.delaySeconds);
-                                        root.delayExpanded = false;
-                                    }
+                        Repeater {
+                            model: [
+                                {label: "No Delay", value: 0, icon: "timer_off"},
+                                {label: "3 Seconds", value: 3, icon: "timer_3"},
+                                {label: "5 Seconds", value: 5, icon: "timer_5"},
+                                {label: "10 Seconds", value: 10, icon: "timer_10"}
+                            ]
+                            delegate: SettingToggle {
+                                label: modelData.label; iconName: modelData.icon
+                                active: root.delaySeconds === modelData.value
+                                isOption: true // Shows a radio/check dot
+                                isFirst: index === 0
+                                isLast: index === 3
+                                isHighlighted: root.delayExpanded && index === root.delaySelectedIndex
+                                onToggled: {
+                                    root.delaySeconds = modelData.value;
+                                    root._save("delaySeconds", root.delaySeconds);
+                                    root.delayExpanded = false;
                                 }
                             }
                         }
@@ -2379,23 +2434,34 @@ PluginComponent {
                 radius: 24
                 color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.1)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                 clip: true
                 
                 anchors.bottom: pillContainer.top
                 anchors.bottomMargin: 24
-                anchors.horizontalCenter: pillContainer.horizontalCenter
+                x: {
+                    try {
+                        let btnCenterInPill = monitorBtn.mapToItem(pillContainer, monitorBtn.width / 2, 0).x;
+                        let targetX = pillContainer.x + btnCenterInPill - width / 2;
+                        let minX = 16;
+                        let maxX = (overlay ? overlay.width : 1920) - width - 16;
+                        return Math.max(minX, Math.min(maxX, targetX));
+                    } catch (e) {
+                        return pillContainer.x + (pillContainer.width - width) / 2;
+                    }
+                }
                 
                 visible: opacity > 0.01
                 opacity: root.monitorExpanded ? 1 : 0
-                scale: root.monitorExpanded ? 1 : 0.9
+                scale: root.monitorExpanded ? 1 : 0.92
                 transformOrigin: Item.Bottom
                 
-                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutExpo } }
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-                layer.enabled: true
+                layer.enabled: opacity > 0.01 && opacity < 0.99 ? false : true
                 layer.effect: MultiEffect {
                     shadowEnabled: true
                     shadowVerticalOffset: 8
@@ -2405,14 +2471,19 @@ PluginComponent {
 
                 // Triangle pointer
                 Rectangle {
+                    id: monitorPointer
                     width: 16; height: 16
                     color: monitorBubble.color
                     rotation: 45
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: -8
                     x: {
-                        let _trigger = pillContainer.width + (root.isVideoMode ? 1 : 0);
-                        return monitorBubble.mapFromItem(monitorBtn, monitorBtn.width / 2, 0).x - width / 2;
+                        try {
+                            let pt = monitorBubble.mapFromItem(monitorBtn, monitorBtn.width / 2, 0);
+                            return Math.max(16, Math.min(monitorBubble.width - width - 16, pt.x - width / 2));
+                        } catch (e) {
+                            return monitorBubble.width / 2 - width / 2;
+                        }
                     }
                     border.width: 1; border.color: monitorBubble.border.color
                     z: -1
@@ -2432,33 +2503,26 @@ PluginComponent {
                         StyledText { text: "Select Monitor"; font.bold: true; font.pixelSize: 15; color: Theme.surfaceText; Layout.fillWidth: true }
                     }
 
-                    Rectangle {
+                    // Selection Segment Stack
+                    Column {
+                        id: monitorBubbleOptionsCol
                         Layout.fillWidth: true
-                        Layout.preferredHeight: monitorBubbleOptionsCol.implicitHeight
-                        radius: 12
-                        color: Theme.withAlpha(Theme.secondary || "#404040", 0.06)
-                        border.width: 1
-                        border.color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-                        clip: true
+                        spacing: 2
                         
-                        Column {
-                            id: monitorBubbleOptionsCol
-                            width: parent.width
-                            
-                            Repeater {
-                                model: root.monitorList
-                                delegate: SettingToggle {
-                                    label: modelData.label
-                                    iconName: "monitor"
-                                    active: root.videoMonitor === modelData.value
-                                    isOption: true
-                                    isLast: index === root.monitorList.length - 1
-                                    isHighlighted: root.monitorExpanded && index === root.monitorSelectedIndex
-                                    onToggled: {
-                                        root.videoMonitor = modelData.value;
-                                        root._save("videoMonitor", root.videoMonitor);
-                                        root.monitorExpanded = false;
-                                    }
+                        Repeater {
+                            model: root.monitorList
+                            delegate: SettingToggle {
+                                label: modelData.label
+                                iconName: "monitor"
+                                active: root.videoMonitor === modelData.value
+                                isOption: true
+                                isFirst: index === 0
+                                isLast: index === root.monitorList.length - 1
+                                isHighlighted: root.monitorExpanded && index === root.monitorSelectedIndex
+                                onToggled: {
+                                    root.videoMonitor = modelData.value;
+                                    root._save("videoMonitor", root.videoMonitor);
+                                    root.monitorExpanded = false;
                                 }
                             }
                         }
@@ -2487,7 +2551,7 @@ PluginComponent {
                     radius: height / 2
                     color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity)
                     border.width: 1
-                    border.color: Theme.withAlpha(Theme.outline || "#ffffff", 0.1)
+                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
                     
                     layer.enabled: true
                     layer.effect: MultiEffect {
@@ -2516,29 +2580,57 @@ PluginComponent {
                         ToolbarBtn {
                             isFirst: true; iconName: "photo_camera"; active: root.mediaMode === "photo"
                             tooltipText: "Photo Mode"
-                            onClicked: { root.mediaMode = "photo"; root.isVideoMode = false; }
+                            onClicked: { 
+                                root.mediaMode = "photo"; 
+                                root.isVideoMode = false; 
+                                root._save("mediaMode", "photo");
+                                root._save("isVideoMode", false);
+                            }
                         }
                         ToolbarBtn {
                             isLast: !root.enableAudioRecorder; iconName: "videocam"; active: root.mediaMode === "video"
                             tooltipText: "Video Mode"
-                            onClicked: { root.mediaMode = "video"; root.isVideoMode = true; }
+                            onClicked: { 
+                                root.mediaMode = "video"; 
+                                root.isVideoMode = true; 
+                                root._save("mediaMode", "video");
+                                root._save("isVideoMode", true);
+                            }
                         }
                         ToolbarBtn {
                             visible: root.enableAudioRecorder
                             isLast: true; iconName: "graphic_eq"; active: root.mediaMode === "audio"
                             tooltipText: "Audio Recorder Mode"
-                            onClicked: { root.mediaMode = "audio"; root.isVideoMode = false; }
+                            onClicked: { 
+                                root.mediaMode = "audio"; 
+                                root.isVideoMode = false; 
+                                root._save("mediaMode", "audio");
+                                root._save("isVideoMode", false);
+                            }
                         }
                     }
 
-                    Rectangle { width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
-
-                    // Modes (Screen region selection not applicable for audio recording)
+                    // Modes / Capture Group (Segmented)
                     Row {
                         id: modeRow
-                        visible: root.mediaMode !== "audio"
                         spacing: 4
+
+                        // In Audio Mode: Show Record Audio button here in group 2
                         ToolbarBtn {
+                            id: audioRecordBtn
+                            visible: root.mediaMode === "audio"
+                            isSegmented: true
+                            isFirst: true
+                            isLast: true
+                            iconName: "fiber_manual_record"
+                            tooltipText: "Record Audio"
+                            hoverColor: Theme.error || "#FF4444"
+                            onClicked: root.performCapture(false)
+                        }
+
+                        // Photo & Video Modes
+                        ToolbarBtn {
+                            visible: root.mediaMode !== "audio"
                             isFirst: true
                             iconName: "screenshot_region"
                             active: root.captureMode === "interactive"
@@ -2549,6 +2641,7 @@ PluginComponent {
                             }
                         }
                         ToolbarBtn {
+                            visible: root.mediaMode !== "audio"
                             id: monitorBtn
                             iconName: "monitor";
                             active: root.captureMode === "monitor"
@@ -2568,7 +2661,18 @@ PluginComponent {
                             }
                         }
                         ToolbarBtn {
-                            isLast: true
+                            visible: root.mediaMode !== "audio" && !root.isVideoMode
+                            iconName: "picture_in_picture"
+                            active: root.captureMode === "window"
+                            tooltipText: "Window Capture"
+                            onClicked: {
+                                root.captureMode = "window";
+                                root._save("captureMode", "window");
+                            }
+                        }
+                        ToolbarBtn {
+                            visible: root.mediaMode !== "audio"
+                            isLast: root.isVideoMode
                             iconName: "monitor_weight"
                             active: root.captureMode === "all"
                             tooltipText: root.isVideoMode ? "Record All" : "All Screens"
@@ -2577,19 +2681,30 @@ PluginComponent {
                                 root._save("captureMode", "all");
                             }
                         }
+                        ToolbarBtn {
+                            visible: root.mediaMode !== "audio" && !root.isVideoMode
+                            isLast: true
+                            iconName: "swap_vert"
+                            active: root.captureMode === "scroll"
+                            tooltipText: "Scrolling Screenshot"
+                            onClicked: {
+                                root.captureMode = "scroll";
+                                root._save("captureMode", "scroll");
+                            }
+                        }
                     }
 
-                    Rectangle { visible: root.mediaMode !== "audio"; width: 1; height: 28; color: Qt.rgba(0, 0, 0, 0.1); anchors.verticalCenter: parent.verticalCenter }
-
-                    // Actions
+                    // Actions / Utilities Group (Segmented)
                     Row {
                         id: actionRow
                         spacing: 4
-                        
+
                         ToolbarBtn { 
                             id: delayBtn
                             visible: true
+                            isSegmented: true
                             isFirst: true
+                            isLast: false
                             iconName: "timer"
                             tooltipText: "Delay: " + root.delaySeconds + "s"
                             active: root.delayExpanded
@@ -2606,20 +2721,43 @@ PluginComponent {
                                 color: Theme.primary
                                 anchors.bottom: parent.bottom; anchors.bottomMargin: 2
                                 anchors.right: parent.right; anchors.rightMargin: 2
-                                border.width: 1.5; border.color: delayBtn.isDark ? "black" : "white"
+                                border.width: 1.5; border.color: delayBtn.isDark ? (Theme.surface || "black") : (Theme.onSurface || "white")
                                 z: 100
                                 
                                 StyledText {
                                     text: root.delaySeconds
                                     anchors.centerIn: parent
                                     font.pixelSize: 10; font.bold: true
-                                    color: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5) ? "black" : "white"
+                                    color: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5) ? (Theme.surface || "black") : (Theme.onSurface || "white")
                                 }
                             }
                         }
 
-                        ToolbarBtn { isFirst: !delayBtn.visible; id: settingsBtn; iconName: "settings"; active: root.settingsExpanded; onClicked: { root.settingsExpanded = !root.settingsExpanded; root.delayExpanded = false; root.monitorExpanded = false; } }
-                        ToolbarBtn { isLast: true; iconName: "close"; hoverColor: "#FF4444"; animateRotate: true; onClicked: root.close() }
+                        ToolbarBtn { 
+                            id: settingsBtn
+                            isSegmented: true
+                            isFirst: false
+                            isLast: false
+                            iconName: "settings"
+                            active: root.settingsExpanded
+                            onClicked: { 
+                                root.settingsExpanded = !root.settingsExpanded; 
+                                root.delayExpanded = false; 
+                                root.monitorExpanded = false; 
+                            } 
+                        }
+
+                        ToolbarBtn { 
+                            id: closeBtn
+                            isSegmented: true
+                            isFirst: false
+                            isLast: true
+                            iconName: "close"
+                            tooltipText: "Close"
+                            hoverColor: Theme.error || "#FF4444"
+                            animateRotate: true
+                            onClicked: root.close() 
+                        }
                     }
 
                 }
@@ -2627,12 +2765,13 @@ PluginComponent {
 
             // Instruction Hint Pill
             Rectangle {
+                id: hintPillContainer
                 width: hintText.implicitWidth + 32; height: 32; radius: 16
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 8
-                color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity * 0.8)
-                border.width: 1; border.color: Theme.withAlpha(Theme.outline || "#ffffff", 0.1)
+                color: Theme.withAlpha(Theme.surfaceContainerHigh || Theme.surfaceVariant || Theme.surface || "#252525", root.toolbarOpacity * 0.85)
+                border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                 
                 StyledText {
                     id: hintText
@@ -2685,76 +2824,96 @@ PluginComponent {
     }
 
     // -- Components -----------------------------------------------------------
+    // -- Components -----------------------------------------------------------
     component ToolbarBtn: Item {
+        id: tbBtnRoot
         property string iconName: ""
         property bool active: false
         property bool isFirst: false
         property bool isLast: false
+        property bool isSegmented: true
         property bool animateRotate: false
         property string tooltipText: ""
         property color hoverColor: "transparent"
         property bool isDark: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5)
         signal clicked()
-        width: 52; height: 40
+        width: visible ? 52 : 0; height: visible ? 40 : 0
 
-        // Move scale to the root to avoid clipping artifacts
-        scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.05 : 1.0)
+        scale: ma.pressed ? 0.94 : (ma.containsMouse ? 1.03 : 1.0)
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
-        Item {
+        readonly property real outerR: isSegmented ? 12 : 20
+        readonly property real innerR: isSegmented ? 4 : 20
+
+        readonly property bool hasCustomHoverColor: {
+            if (!hoverColor || hoverColor === "transparent") return false;
+            let c = String(hoverColor);
+            return c !== "#00000000" && c !== "rgba(0,0,0,0)" && c !== "#000000" && hoverColor.a > 0;
+        }
+
+        Rectangle {
+            id: btnBg
             anchors.fill: parent
-            clip: true // Clips the background geometry but scales with parent
 
-            Rectangle {
-                id: btnBg
-                property real cornerOffset: 14
-                x: active ? 0 : (isFirst ? 0 : (isLast ? -cornerOffset : -cornerOffset))
-                width: active ? parent.width : (isFirst ? parent.width + cornerOffset : (isLast ? parent.width + cornerOffset : parent.width + cornerOffset * 2))
-                height: parent.height
-                radius: 20
-                
-                color: active ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : 
-                       (ma.containsMouse ? (hoverColor != "transparent" ? Theme.withAlpha(hoverColor, 0.2) : Theme.withAlpha(Theme.onSurface || "#ffffff", 0.05)) : Theme.withAlpha(Theme.onSurface || "#ffffff", 0.03))
-                
-                // Custom Ripple Effect
-                Rectangle {
-                    id: rippleObj
-                    anchors.centerIn: parent
-                    width: parent.width * 1.5; height: width
-                    radius: width / 2
-                    color: Qt.rgba(1, 1, 1, 0.12)
-                    opacity: 0; scale: 0
+            topLeftRadius: isSegmented ? ((active || ma.containsMouse) ? (height / 2) : (isFirst ? outerR : innerR)) : outerR
+            bottomLeftRadius: isSegmented ? ((active || ma.containsMouse) ? (height / 2) : (isFirst ? outerR : innerR)) : outerR
+            topRightRadius: isSegmented ? ((active || ma.containsMouse) ? (height / 2) : (isLast ? outerR : innerR)) : outerR
+            bottomRightRadius: isSegmented ? ((active || ma.containsMouse) ? (height / 2) : (isLast ? outerR : innerR)) : outerR
 
-                    states: State {
-                        name: "pressed"; when: ma.pressed
-                        PropertyChanges { target: rippleObj; opacity: 1; scale: 1 }
-                    }
-                    transitions: Transition {
-                        NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
-                    }
-                }
+            Behavior on topLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+            Behavior on bottomLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+            Behavior on topRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+            Behavior on bottomRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
 
-                Behavior on x { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
-                Behavior on width { NumberAnimation { duration: 350; easing.type: Easing.OutQuint } }
-                Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+            color: active 
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22)
+                : (ma.containsMouse 
+                    ? (tbBtnRoot.hasCustomHoverColor ? Theme.withAlpha(hoverColor, 0.22) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12))
+                    : (isSegmented ? Theme.withAlpha(Theme.surfaceContainerHighest || "#303030", 0.35) : Theme.withAlpha(Theme.onSurface || "#ffffff", 0.04)))
+
+            border.width: 1
+            border.color: active
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.50)
+                : (ma.containsMouse 
+                    ? (tbBtnRoot.hasCustomHoverColor ? Theme.withAlpha(hoverColor, 0.45) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.30))
+                    : (isSegmented ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08)))
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on border.color { ColorAnimation { duration: 150 } }
+
+            DankRipple {
+                id: rippleObj
+                anchors.fill: parent
+                cornerRadius: btnBg.topLeftRadius
+                rippleColor: Theme.primary
             }
         }
+
         DankIcon {
             id: icon
             name: parent.iconName; size: 20; anchors.centerIn: parent;
-            color: active ? (parent.isDark ? "white" : (Theme.primary || "#8D4D57")) : (Theme.primary || "#8D4D57")
-            opacity: active ? 1 : (ma.containsMouse ? 1 : 0.7)
+            color: active 
+                ? (Theme.primary || "#8D4D57") 
+                : (ma.containsMouse 
+                    ? (tbBtnRoot.hasCustomHoverColor ? hoverColor : (Theme.surfaceText || Theme.onSurface || (tbBtnRoot.isDark ? "#ffffff" : "#000000"))) 
+                    : (Theme.surfaceVariantText || Theme.outline || (tbBtnRoot.isDark ? "#bbbbbb" : "#555555")))
+            opacity: active ? 1.0 : (ma.containsMouse ? 1.0 : 0.8)
 
-            // Interaction animations: Tilt for regular icons, full spin for close
             rotation: parent.animateRotate ? (ma.containsMouse ? 360 : 0) : (ma.containsMouse ? 12 : 0)
-            y: (ma.containsMouse && !parent.animateRotate) ? -4 : 0
+            y: (ma.containsMouse && !parent.animateRotate) ? -3 : 0
 
+            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on opacity { NumberAnimation { duration: 150 } }
             Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
             Behavior on y { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
         }
+
         MouseArea {
             id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor;
+            onPressed: mouse => {
+                let mapped = mapToItem(parent, mouse.x, mouse.y);
+                rippleObj.trigger(mapped.x, mapped.y);
+            }
             onClicked: parent.clicked()
             onEntered: {
                 if (parent.tooltipText !== "") {
@@ -2767,7 +2926,7 @@ PluginComponent {
         }
     }
 
-    // Premium Action Button for the Recording Pill
+    // Premium Action Button for the Recording Pill (Segmented UI)
     component PillActionBtn: Item {
         id: pillBtnRoot
         property string iconName: ""
@@ -2775,55 +2934,70 @@ PluginComponent {
         property real iconSize: 20
         property bool isDark: (Theme.surface.r + Theme.surface.g + Theme.surface.b < 1.5)
         property bool isActive: false
+        property bool isFirst: false
+        property bool isLast: false
+        property bool isSegmented: true
+        property color customHoverColor: "transparent"
         signal clicked()
 
         width: visible ? size : 0; height: visible ? size : 0
-        scale: ma.pressed ? 0.92 : (ma.containsMouse ? 1.08 : 1.0)
+        scale: ma.pressed ? 0.94 : (ma.containsMouse ? 1.05 : 1.0)
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
+        readonly property real outerR: isSegmented ? 12 : 20
+        readonly property real innerR: isSegmented ? 4 : 20
+
+        readonly property bool hasCustomHover: {
+            if (!customHoverColor || customHoverColor === "transparent") return false;
+            let c = String(customHoverColor);
+            return c !== "#00000000" && c !== "rgba(0,0,0,0)" && customHoverColor.a > 0;
+        }
+
         Rectangle {
+            id: pillBtnBg
             anchors.fill: parent
-            radius: isActive ? size / 2 : 12
-            color: isActive ? (Theme.primary || "#38bdf8") : Theme.withAlpha(Theme.primary || "#ffffff", 0.25)
-            clip: true
 
-            Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
+            topLeftRadius: isSegmented ? ((isActive || ma.containsMouse) ? (height / 2) : (isFirst ? outerR : innerR)) : (isActive ? height / 2 : outerR)
+            bottomLeftRadius: isSegmented ? ((isActive || ma.containsMouse) ? (height / 2) : (isFirst ? outerR : innerR)) : (isActive ? height / 2 : outerR)
+            topRightRadius: isSegmented ? ((isActive || ma.containsMouse) ? (height / 2) : (isLast ? outerR : innerR)) : (isActive ? height / 2 : outerR)
+            bottomRightRadius: isSegmented ? ((isActive || ma.containsMouse) ? (height / 2) : (isLast ? outerR : innerR)) : (isActive ? height / 2 : outerR)
+
+            Behavior on topLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+            Behavior on bottomLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+            Behavior on topRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+            Behavior on bottomRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+
+            color: isActive 
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                : (ma.containsMouse 
+                    ? (pillBtnRoot.hasCustomHover ? Theme.withAlpha(customHoverColor, 0.22) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12))
+                    : (isSegmented ? Theme.withAlpha(Theme.surfaceContainerHighest || "#303030", 0.35) : Theme.withAlpha(Theme.onSurface || "#ffffff", 0.05)))
+
+            border.width: 1
+            border.color: isActive
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.50)
+                : (ma.containsMouse 
+                    ? (pillBtnRoot.hasCustomHover ? Theme.withAlpha(customHoverColor, 0.45) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.30))
+                    : (isSegmented ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08)))
+
             Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on border.color { ColorAnimation { duration: 150 } }
 
-            // Hover glow
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: isDark ? "black" : "white"
-                opacity: ma.containsMouse ? 0.1 : 0
-                Behavior on opacity { NumberAnimation { duration: 150 } }
-                Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
-            }
-
-            // DankRipple
-            Rectangle {
+            DankRipple {
                 id: rippleObj
-                anchors.centerIn: parent
-                width: parent.width * 1.5; height: width
-                radius: width / 2
-                color: isDark ? "black" : "white"
-                opacity: 0; scale: 0
-
-                states: State {
-                    name: "pressed"; when: ma.pressed
-                    PropertyChanges { target: rippleObj; opacity: 0.2; scale: 1 }
-                }
-                transitions: Transition {
-                    NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
-                }
+                anchors.fill: parent
+                cornerRadius: pillBtnBg.topLeftRadius
+                rippleColor: Theme.primary
             }
         }
 
         DankIcon {
             name: iconName; size: iconSize;
             color: isActive
-                ? (isDark ? "black" : "white")
-                : ((ma.containsMouse || ma.pressed) ? "white" : Theme.primary)
+                ? (Theme.primary || "#8D4D57")
+                : (ma.containsMouse 
+                    ? (pillBtnRoot.hasCustomHover ? customHoverColor : (Theme.surfaceText || Theme.onSurface || (pillBtnRoot.isDark ? "#ffffff" : "#000000"))) 
+                    : (Theme.surfaceVariantText || Theme.outline || (pillBtnRoot.isDark ? "#bbbbbb" : "#555555")))
             anchors.centerIn: parent
             rotation: (ma.containsMouse ? (iconName === "stop" ? -360 : 8) : 0) + (isActive ? 360 : 0)
             Behavior on rotation { NumberAnimation { duration: 450; easing.type: Easing.OutBack } }
@@ -2832,32 +3006,141 @@ PluginComponent {
 
         MouseArea {
             id: ma; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; hoverEnabled: true
+            onPressed: mouse => {
+                let mapped = mapToItem(parent, mouse.x, mouse.y);
+                rippleObj.trigger(mapped.x, mapped.y);
+            }
             onClicked: parent.clicked()
         }
     }
 
 
 
+    // Segmented Option Bar for popup option choices (matching SegmentedSetting in Settings.qml)
+    component SegmentedBar: Item {
+        id: segBarRoot
+        property var model: []
+        property int currentIndex: 0
+        property real buttonHeight: 34
+        signal selectionChanged(int idx, string val)
+
+        width: parent.width
+        implicitHeight: buttonHeight
+        readonly property int count: model ? model.length : 0
+
+        RowLayout {
+            anchors.fill: parent
+            spacing: 2
+
+            Repeater {
+                model: segBarRoot.model
+
+                delegate: Rectangle {
+                    id: segBtn
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    readonly property bool isSelected: index === segBarRoot.currentIndex
+                    readonly property bool isHovered: segBtnMa.containsMouse
+                    readonly property real outerR: Theme.cornerRadius || 12
+                    readonly property real innerR: 4
+
+                    topLeftRadius: (isSelected || isHovered) ? (height / 2) : (index === 0 ? outerR : innerR)
+                    bottomLeftRadius: (isSelected || isHovered) ? (height / 2) : (index === 0 ? outerR : innerR)
+                    topRightRadius: (isSelected || isHovered) ? (height / 2) : (index === segBarRoot.count - 1 ? outerR : innerR)
+                    bottomRightRadius: (isSelected || isHovered) ? (height / 2) : (index === segBarRoot.count - 1 ? outerR : innerR)
+
+                    Behavior on topLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+                    Behavior on bottomLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+                    Behavior on topRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+                    Behavior on bottomRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutExpo } }
+
+                    color: isSelected
+                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
+                        : (isHovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10) : Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5))
+
+                    border.width: 1
+                    border.color: isSelected
+                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.5)
+                        : (isHovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10))
+
+                    scale: segBtnMa.pressed ? 0.96 : (isHovered ? 1.02 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                    DankRipple {
+                        id: segRip
+                        anchors.fill: parent
+                        cornerRadius: (segBtn.isSelected || segBtn.isHovered) ? (segBtn.height / 2) : (index === 0 || index === segBarRoot.count - 1 ? segBtn.outerR : segBtn.innerR)
+                        rippleColor: Theme.primary
+                    }
+
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: typeof modelData === "object" ? (modelData.label || modelData.title || "") : String(modelData)
+                        font.pixelSize: 12
+                        font.weight: isSelected ? Font.Bold : Font.Normal
+                        color: isSelected ? Theme.primary : (isHovered ? Theme.surfaceText : Theme.surfaceVariantText)
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+
+                    MouseArea {
+                        id: segBtnMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onPressed: mouse => {
+                            let mapped = mapToItem(parent, mouse.x, mouse.y);
+                            segRip.trigger(mapped.x, mapped.y);
+                        }
+                        onClicked: {
+                            segBarRoot.currentIndex = index;
+                            var val = typeof modelData === "object" ? (modelData.value !== undefined ? modelData.value : modelData.val) : modelData;
+                            segBarRoot.selectionChanged(index, val);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     component SettingToggle: Rectangle {
         id: toggleRoot
         property string label: ""
         property string iconName: ""
         property bool active: false
-        property bool isOption: false // If true, shows a dot instead of a switch
+        property bool isOption: false // If true, shows a radio/check dot instead of a switch
+        property bool isFirst: false
         property bool isLast: false
         property bool isHighlighted: false
+        property real outerR: Theme.cornerRadius || 12
+        property real innerR: 4
         signal toggled()
 
-        width: parent.width; height: visible ? 44 : 0
-        color: (toggleRoot.isHighlighted || toggleRoot.activeFocus) ? Theme.withAlpha(Theme.primary || "#ffffff", 0.25) : 
-               (ma.containsMouse ? Theme.withAlpha(Theme.primary || "#ffffff", 0.08) : "transparent")
+        width: parent.width; height: visible ? 46 : 0
+        color: (toggleRoot.isHighlighted || toggleRoot.activeFocus) 
+            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22)
+            : (ma.containsMouse 
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+                : Theme.withAlpha(Theme.surfaceContainerHigh || "#303030", 0.5))
+
+        border.width: 1
+        border.color: (toggleRoot.isHighlighted || toggleRoot.activeFocus)
+            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
+            : (ma.containsMouse 
+                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10))
+
         clip: true
-        radius: 12
         
-        focus: root.settingsExpanded
-        activeFocusOnTab: visible
+        topLeftRadius: (isFirst && isLast) ? outerR : (isFirst ? outerR : innerR)
+        topRightRadius: (isFirst && isLast) ? outerR : (isFirst ? outerR : innerR)
+        bottomLeftRadius: (isFirst && isLast) ? outerR : (isLast ? outerR : innerR)
+        bottomRightRadius: (isFirst && isLast) ? outerR : (isLast ? outerR : innerR)
+        
+        focus: false
+        activeFocusOnTab: false
         Keys.onReturnPressed: toggleRoot.toggled()
-        Keys.onSpacePressed: toggleRoot.toggled()
         Keys.onEscapePressed: {
             if (root.settingsExpanded || root.delayExpanded || root.monitorExpanded) {
                 root.settingsExpanded = false;
@@ -2868,36 +3151,49 @@ PluginComponent {
                 root.close();
             }
         }
-        
-        // We do not force active focus here on highlight to prevent focus theft from the global keyboard handler.
 
-        // Custom Ripple Effect
-        Rectangle {
-            id: toggleRipple
-            anchors.centerIn: parent
-            width: parent.width * 1.2; height: width
-            radius: width / 2
-            color: Theme.withAlpha(Theme.primary || "#ffffff", 0.12)
-            opacity: 0; scale: 0
-
-            states: State {
-                name: "pressed"; when: ma.pressed
-                PropertyChanges { target: toggleRipple; opacity: 1; scale: 1 }
-            }
-            transitions: Transition {
-                NumberAnimation { properties: "opacity,scale"; duration: 150; easing.type: Easing.OutBack }
-            }
+        // DankRipple with matching corner radii
+        DankRipple {
+            id: toggleRip
+            anchors.fill: parent
+            cornerRadius: (toggleRoot.isFirst || toggleRoot.isLast) ? toggleRoot.outerR : toggleRoot.innerR
+            rippleColor: Theme.primary
         }
 
         Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutQuart } }
         Behavior on opacity { NumberAnimation { duration: 150 } }
         opacity: visible ? 1 : 0
         Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on border.color { ColorAnimation { duration: 150 } }
 
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 12
-            DankIcon { name: toggleRoot.iconName; size: 18; color: toggleRoot.active ? Theme.primary : Theme.surfaceVariantText }
-            StyledText { text: toggleRoot.label; font.pixelSize: 13; color: Theme.surfaceText; Layout.fillWidth: true }
+
+            // Circular badge container for icon matching Settings.qml
+            Rectangle {
+                width: 32; height: 32; radius: 16
+                color: toggleRoot.active 
+                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) 
+                    : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.45)
+                Layout.alignment: Qt.AlignVCenter
+                Behavior on color { ColorAnimation { duration: 150 } }
+
+                DankIcon { 
+                    name: toggleRoot.iconName
+                    size: 18
+                    color: toggleRoot.active ? Theme.primary : Theme.surfaceVariantText
+                    anchors.centerIn: parent
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                }
+            }
+
+            StyledText { 
+                text: toggleRoot.label
+                font.pixelSize: 13
+                font.weight: Font.Medium
+                color: Theme.surfaceText
+                Layout.fillWidth: true 
+            }
             
             // Toggle Switch
             DankToggle { 
@@ -2905,35 +3201,34 @@ PluginComponent {
                 scale: 0.85
                 transformOrigin: Item.Right
                 checked: toggleRoot.active
-                onClicked: toggleRoot.toggled() // Ensure clicking the switch itself also works
+                onClicked: toggleRoot.toggled()
             }
             
             // Radio/Option Indicator
             Rectangle {
                 visible: toggleRoot.isOption
-                width: 16; height: 16; radius: 8
+                width: 20; height: 20; radius: 10
                 border.width: 1.5
-                border.color: toggleRoot.active ? Theme.primary : Theme.withAlpha(Theme.outline || "#ffffff", 0.2)
-                color: "transparent"
+                border.color: toggleRoot.active ? Theme.primary : Theme.withAlpha(Theme.outline || "#ffffff", 0.3)
+                color: toggleRoot.active ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : "transparent"
+                Behavior on border.color { ColorAnimation { duration: 150 } }
+                Behavior on color { ColorAnimation { duration: 150 } }
                 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 8; height: 8; radius: 4
+                    width: 10; height: 10; radius: 5
                     color: Theme.primary
                     visible: toggleRoot.active
                 }
             }
         }
 
-        Rectangle {
-            width: parent.width; height: 1
-            anchors.bottom: parent.bottom
-            color: Theme.withAlpha(Theme.secondary || "#ffffff", 0.15)
-            visible: !toggleRoot.isLast
-        }
-
         MouseArea {
             id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+            onPressed: mouse => {
+                let mapped = mapToItem(parent, mouse.x, mouse.y);
+                toggleRip.trigger(mapped.x, mapped.y);
+            }
             onClicked: { toggleRoot.toggled(); }
         }
     }
@@ -2998,7 +3293,7 @@ PluginComponent {
         screen: targetScreen
         visible: root.isRecording && root.showRecPill
         WlrLayershell.layer: root.recPillDragging ? WlrLayer.Top : WlrLayer.Overlay
-        WlrLayershell.namespace: "dms-rec-pill"
+        WlrLayershell.namespace: "dms:plugins:screenCaptureToolbar:pill"
 
         anchors {
             top: true
@@ -3013,6 +3308,17 @@ PluginComponent {
         height: root.recPillWindowHeight
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
+
+        BackgroundEffect.blurRegion: visible ? recPillBlurRegion : null
+
+        Region {
+            id: recPillBlurRegion
+            x: recPillBg.x
+            y: recPillBg.y
+            width: recPillBg.width
+            height: recPillBg.height
+            radius: recPillBg.radius
+        }
 
         // Local Tooltip for Recording Pill
         Item {
@@ -3048,8 +3354,8 @@ PluginComponent {
                 id: pillTooltipLabel
                 anchors.centerIn: parent
                 text: pillTooltip.text
-                color: "white"
-                font.pixelSize: 11
+                color: Theme.surfaceText || "white"
+                font.pixelSize: Theme.fontSizeSmall || 11
                 font.weight: Font.Medium
             }
 
@@ -3073,15 +3379,14 @@ PluginComponent {
 
             Behavior on width { NumberAnimation { duration: 450; easing.type: Easing.OutQuint } }
 
-            // Fixed high opacity as requested, removing dependency on settings
-            color: Theme.withAlpha(Theme.surface || "#ffffff", 0.98)
+            color: Theme.withAlpha(Theme.surface || "#252525", root.pillOpacity)
             border.width: root.recPillDragging ? 3 : 1
-            border.color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Qt.rgba(0, 0, 0, 0.1)
+            border.color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
             
             Behavior on border.width { NumberAnimation { duration: 300 } }
             Behavior on border.color { ColorAnimation { duration: 150 } }
             
-            layer.enabled: false // Shadows removed as requested
+            layer.enabled: false
         }
 
         // ---- Collapsed State: [Dot] [Time] [Waveform] [Stop] ----
@@ -3113,7 +3418,7 @@ PluginComponent {
 
                     Rectangle {
                         width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
-                        color: root.isPaused ? Theme.surfaceVariantText : "#FF4444"
+                        color: root.isPaused ? Theme.surfaceVariantText : (Theme.error || "#FF4444")
                         SequentialAnimation on opacity {
                             running: root.isRecording && !root.isPaused
                             loops: Animation.Infinite
@@ -3124,8 +3429,10 @@ PluginComponent {
                     StyledText {
                         id: collapsedTimer
                         text: root.formatTime(root.recordingElapsed)
-                        font.pixelSize: 22; font.weight: Font.Medium; color: recPill.isDark ? "white" : "#333333"
-                        font.family: "JetBrains Mono, monospace" // Monospace to prevent shifting
+                        font.pixelSize: Theme.fontSizeLarge ? Theme.fontSizeLarge + 6 : 22
+                        font.weight: Font.Medium
+                        color: Theme.surfaceText || (recPill.isDark ? "white" : "#333333")
+                        font.family: Theme.monoFontFamily || "JetBrains Mono, monospace" // Monospace to prevent shifting
                         width: 70 // Fixed width to prevent shifting neighbors
                         horizontalAlignment: Text.AlignLeft
                         anchors.verticalCenter: parent.verticalCenter
@@ -3142,9 +3449,11 @@ PluginComponent {
                     }
                 }
 
-                // Squircle Stop Button
+                // Stop Button
                 PillActionBtn {
                     iconName: "stop"
+                    isSegmented: false
+                    customHoverColor: Theme.error || "#FF4444"
                     onClicked: root.stopRecording()
                 }
             }
@@ -3191,7 +3500,7 @@ PluginComponent {
 
                 DankIcon {
                     name: "chevron_left"; size: 18;
-                    color: (collapseMa.containsMouse || collapseMa.pressed) ? (recPill.isDark ? "white" : "black") : Theme.primary
+                    color: (collapseMa.containsMouse || collapseMa.pressed) ? (recPill.isDark ? (Theme.onSurface || "white") : (Theme.surface || "black")) : Theme.primary
                     anchors.centerIn: parent
                     rotation: 180 + (collapseMa.containsMouse ? -12 : 0) // Points Left to Collapse + tilt
                     Behavior on rotation { NumberAnimation { duration: 400; easing.type: Easing.OutBack } }
@@ -3203,7 +3512,7 @@ PluginComponent {
             Rectangle {
                 Layout.fillWidth: true; Layout.fillHeight: true
                 Layout.margins: 4
-                radius: 12
+                radius: Theme.cornerRadius || 12
                 color: "transparent"
                 border.width: 1; border.color: Qt.rgba(0,0,0,0.05)
 
@@ -3212,7 +3521,7 @@ PluginComponent {
                     spacing: 12
                     Rectangle {
                         width: 10; height: 10; radius: 5; anchors.verticalCenter: parent.verticalCenter
-                        color: root.isPaused ? Theme.surfaceVariantText : "#FF4444"
+                        color: root.isPaused ? Theme.surfaceVariantText : (Theme.error || "#FF4444")
                         SequentialAnimation on opacity {
                             running: root.isRecording && !root.isPaused
                             loops: Animation.Infinite
@@ -3223,8 +3532,10 @@ PluginComponent {
                     StyledText {
                         id: expandedTimer
                         text: root.formatTime(root.recordingElapsed)
-                        font.pixelSize: 22; font.weight: Font.Medium; color: recPill.isDark ? "white" : "#333333"
-                        font.family: "JetBrains Mono, monospace"
+                        font.pixelSize: Theme.fontSizeLarge ? Theme.fontSizeLarge + 6 : 22
+                        font.weight: Font.Medium
+                        color: Theme.surfaceText || (recPill.isDark ? "white" : "#333333")
+                        font.family: Theme.monoFontFamily || "JetBrains Mono, monospace"
                         width: 70
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -3240,23 +3551,33 @@ PluginComponent {
                 }
             }
 
-            // Action Block
+            // Action Block (Segmented)
             Row {
-                spacing: 6
+                spacing: 4
                 Layout.alignment: Qt.AlignVCenter
 
                 PillActionBtn {
                     iconName: "stop"
+                    isSegmented: true
+                    isFirst: true
+                    isLast: false
+                    customHoverColor: Theme.error || "#FF4444"
                     onClicked: root.stopRecording()
                 }
                 PillActionBtn {
                     iconName: root.isPaused ? "play_arrow" : "pause"
+                    isSegmented: true
+                    isFirst: false
+                    isLast: false
                     onClicked: root.isPaused ? root.resumeRecording() : root.pauseRecording()
                 }
                 PillActionBtn {
                     iconName: root.isMicMuted ? "mic_off" : "mic"
                     visible: root.isMicCaptured
                     isActive: !root.isMicMuted
+                    isSegmented: true
+                    isFirst: false
+                    isLast: false
                     onClicked: {
                         root.isMicMuted = !root.isMicMuted;
                         if (root.isRecording) {
@@ -3267,6 +3588,9 @@ PluginComponent {
                 }
                 PillActionBtn {
                     iconName: "photo_camera"
+                    isSegmented: true
+                    isFirst: false
+                    isLast: true
                     onClicked: {
                         root.takeScreenshot();
                     }
@@ -3277,7 +3601,7 @@ PluginComponent {
             Rectangle {
                 id: moveBtnRoot
                 width: 40; height: 40; 
-                radius: root.recPillDragging ? 20 : 12
+                radius: root.recPillDragging ? 20 : (Theme.cornerRadius || 12)
                 color: root.recPillDragging ? (Theme.primary || "#38bdf8") : Theme.withAlpha(Theme.primary || "#ffffff", 0.25)
                 scale: moveMa.pressed ? 0.92 : (moveMa.containsMouse ? 1.08 : 1.0)
                 clip: true
@@ -3290,7 +3614,7 @@ PluginComponent {
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
-                    color: recPill.isDark ? "black" : "white"
+                    color: recPill.isDark ? (Theme.surface || "black") : (Theme.onSurface || "white")
                     opacity: moveMa.containsMouse ? 0.1 : 0
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                     Behavior on radius { NumberAnimation { duration: 600; easing.type: Easing.OutExpo } }
@@ -3302,7 +3626,7 @@ PluginComponent {
                     anchors.centerIn: parent
                     width: parent.width * 1.5; height: width
                     radius: width / 2
-                    color: recPill.isDark ? "black" : "white"
+                    color: recPill.isDark ? (Theme.surface || "black") : (Theme.onSurface || "white")
                     opacity: 0; scale: 0
 
                     states: State {
@@ -3317,8 +3641,8 @@ PluginComponent {
                 DankIcon {
                     name: "open_with"; size: 16;
                     color: root.recPillDragging
-                        ? (recPill.isDark ? "black" : "white")
-                        : ((moveMa.containsMouse || moveMa.pressed) ? "white" : Theme.primary)
+                        ? (recPill.isDark ? (Theme.surface || "black") : (Theme.onPrimary || "white"))
+                        : ((moveMa.containsMouse || moveMa.pressed) ? (Theme.onPrimary || "white") : Theme.primary)
                     anchors.centerIn: parent
                     rotation: (moveMa.containsMouse ? 90 : 0) + (root.recPillDragging ? 360 : 0)
                     Behavior on rotation { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
