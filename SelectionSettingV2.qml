@@ -25,9 +25,12 @@ Item {
         if (settings) {
             value = settings.loadValue(settingKey, defaultValue);
             isInitialized = true;
-        } else if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
-            value = PluginService.loadPluginData("screenCaptureToolbar", settingKey, defaultValue);
-            isInitialized = true;
+        } else {
+            const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : null;
+            if (svc && svc.loadPluginData) {
+                value = svc.loadPluginData("screenCaptureToolbar", settingKey, defaultValue);
+                isInitialized = true;
+            }
         }
     }
 
@@ -66,9 +69,12 @@ Item {
         const settings = findSettings();
         if (settings) {
             settings.saveValue(settingKey, value);
-        } else if (typeof PluginService !== "undefined" && PluginService && PluginService.savePluginData) {
-            PluginService.savePluginData("screenCaptureToolbar", settingKey, value);
-            if (PluginService.setGlobalVar) PluginService.setGlobalVar("screenCaptureToolbar", settingKey, value);
+        } else {
+            const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : null;
+            if (svc && svc.savePluginData) {
+                svc.savePluginData("screenCaptureToolbar", settingKey, value);
+                if (svc.setGlobalVar) svc.setGlobalVar("screenCaptureToolbar", settingKey, value);
+            }
         }
     }
 

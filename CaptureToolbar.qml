@@ -561,6 +561,7 @@ PluginComponent {
                 else if (key === "format") root.format = value;
                 else if (key === "quality") root.quality = value;
                 else if (key === "customPath") root.customPath = value;
+                else if (key === "filename") root.filename = value;
                 else if (key === "scrollInterval") root.scrollInterval = value;
                 else if (key === "enableEditorShortcut") root.enableEditorShortcut = value;
                 else if (key === "swapCaptureKeys") root.swapCaptureKeys = value;
@@ -636,9 +637,11 @@ PluginComponent {
     function editorAvailabilityGuard(command) {
         let executable = root.editorExecutableName(command);
         if (executable === "") return "";
+        let title = "Screenshot Editor Missing";
+        let body = "Install " + executable + " or set Editor Pipe Command";
         return "if ! command -v " + root.shellQuote(executable) + " >/dev/null 2>&1; then " +
-               "notify-send " + root.shellQuote("Screenshot Editor Missing") + " " +
-               root.shellQuote("Install " + executable + " or set Editor Pipe Command") + " 2>/dev/null || true; exit 1; fi; ";
+               "if command -v dms >/dev/null 2>&1; then dms ipc call toast errorWith " + root.shellQuote(title) + " " + root.shellQuote(body) + " '' 'screencapture' 2>/dev/null; " +
+               "elif command -v notify-send >/dev/null 2>&1; then notify-send " + root.shellQuote(title) + " " + root.shellQuote(body) + " 2>/dev/null; fi; exit 1; fi; ";
     }
 
     function parseDateTemplate(template) {
@@ -889,7 +892,9 @@ PluginComponent {
         if (!root.showNotify) dmsStr += " --no-notify";
         if (useStdout) dmsStr += " --stdout";
         
-        let generatedName = root.filename !== "" ? root.filename : "screenshot_" + root.filenameTimestamp() + "." + root.format;
+        let parsedFilename = root.filename !== "" ? root.parseDateTemplate(root.filename) : "";
+        if (parsedFilename !== "" && parsedFilename.indexOf(".") === -1) parsedFilename += "." + root.format;
+        let generatedName = parsedFilename !== "" ? parsedFilename : "screenshot_" + root.filenameTimestamp() + "." + root.format;
         dmsStr += " --filename \"" + generatedName + "\"";
 
         dmsStr += " -f " + root.format;
@@ -914,7 +919,9 @@ PluginComponent {
         let editorCommand = root.effectivePipeCommand();
         let dir = root.screenshotDir();
         let selectedFormat = root.format === "jpg" ? "jpeg" : root.format;
-        let outputName = root.filename !== "" ? root.filename : "screenshot_" + root.filenameTimestamp() + "." + root.format;
+        let parsedFilename = root.filename !== "" ? root.parseDateTemplate(root.filename) : "";
+        if (parsedFilename !== "" && parsedFilename.indexOf(".") === -1) parsedFilename += "." + root.format;
+        let outputName = parsedFilename !== "" ? parsedFilename : "screenshot_" + root.filenameTimestamp() + "." + root.format;
         let outputPath = dir + "/" + outputName;
         let mimeType = root.format === "jpg" ? "image/jpeg" : (root.format === "ppm" ? "image/x-portable-pixmap" : "image/png");
         let grimArgs = "-g \"$REGION\" -t " + selectedFormat;
@@ -941,6 +948,9 @@ PluginComponent {
             if (root.copyPathOnCapture) {
                 script += "if command -v wl-copy >/dev/null 2>&1; then echo -n \"$OUT\" | wl-copy; fi; ";
             }
+            if (root.showNotify && !useStdout) {
+                script += "if command -v dms >/dev/null 2>&1; then dms ipc call toast infoWith 'Screenshot Captured' \"Saved to $OUT\" '' 'screencapture' 2>/dev/null; elif command -v notify-send >/dev/null 2>&1; then notify-send 'Screenshot Captured' \"Saved to $OUT\" 2>/dev/null; fi; ";
+            }
             if (useStdout) {
                 if (editorCommand !== "") script += "cat \"$OUT\" | " + editorCommand + "; ";
                 else script += "cat \"$OUT\"; ";
@@ -955,6 +965,9 @@ PluginComponent {
             else script += captureToStdout + "; ";
         } else if (root.copyToClipboard) {
             script += "if command -v wl-copy >/dev/null 2>&1; then " + captureToStdout + " | wl-copy -t " + root.shellQuote(mimeType) + "; else " + captureToStdout + " >/dev/null; fi; ";
+            if (root.showNotify) {
+                script += "if command -v dms >/dev/null 2>&1; then dms ipc call toast infoWith 'Screenshot Captured' 'Copied to clipboard' '' 'screencapture' 2>/dev/null; elif command -v notify-send >/dev/null 2>&1; then notify-send 'Screenshot Captured' 'Copied to clipboard' 2>/dev/null; fi; ";
+            }
         } else {
             script += captureToStdout + " >/dev/null; ";
         }
@@ -1044,7 +1057,7 @@ PluginComponent {
                 "if [ -n \"$HAS_PORTAL\" ] && { [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; }; then " +
                 "gpu-screen-recorder -w portal" + gsrSuffix + " & REC_PID=$!; " +
                 "elif [ \"$XDG_SESSION_TYPE\" = \"wayland\" ] || [ -n \"$WAYLAND_DISPLAY\" ]; then " +
-                "notify-send \"Multi-Monitor Recording\" \"Recording focused screen. Install a desktop portal (e.g. xdg-desktop-portal-niri) to record all screens on Wayland.\" -t 5000; " +
+                "if command -v dms >/dev/null 2>&1; then dms ipc call toast warnWith 'Multi-Monitor Recording' 'Recording focused screen. Install a desktop portal (e.g. xdg-desktop-portal-niri) to record all screens on Wayland.' '' 'screencapture' 2>/dev/null; elif command -v notify-send >/dev/null 2>&1; then notify-send 'Multi-Monitor Recording' 'Recording focused screen. Install a desktop portal (e.g. xdg-desktop-portal-niri) to record all screens on Wayland.' -t 5000; fi; " +
                 "gpu-screen-recorder -w \"$MONITOR\"" + gsrSuffix + " & REC_PID=$!; " +
                 "else " +
                 "gpu-screen-recorder -w screen" + gsrSuffix + " & REC_PID=$!; " +
@@ -1074,7 +1087,7 @@ PluginComponent {
         Quickshell.execDetached(["bash", "-c", finalCmd]);
 
         if (root.showNotify && !deferRecordingUi) {
-            Quickshell.execDetached(["notify-send", "Recording Started", "Saving to " + dir]);
+            Quickshell.execDetached(["dms", "ipc", "call", "toast", "infoWith", "Recording Started", "Saving to " + dir, "", "screencapture"]);
         }
     }
 
@@ -1150,7 +1163,7 @@ PluginComponent {
         Quickshell.execDetached(["bash", "-c", cmd]);
 
         if (root.showNotify) {
-            Quickshell.execDetached(["notify-send", "Audio Recording Started", "Saving to " + dir]);
+            Quickshell.execDetached(["dms", "ipc", "call", "toast", "infoWith", "Audio Recording Started", "Saving to " + dir, "", "screencapture"]);
         }
     }
 
