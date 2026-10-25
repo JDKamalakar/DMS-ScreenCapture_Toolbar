@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Common
 import qs.Modules.Plugins
+import qs.Modules.Settings.Widgets
 import qs.Widgets
 import qs.Services
 import QtCore
@@ -170,17 +171,20 @@ PluginSettings {
     }
 
     function loadValue(key, def) {
-        if (typeof PluginService !== "undefined" && PluginService && PluginService.loadPluginData) {
-            return PluginService.loadPluginData(root.pluginId, key, def);
+        var svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService;
+        if (svc && svc.loadPluginData) {
+            var val = svc.loadPluginData(root.pluginId, key, def);
+            return (val !== undefined) ? val : def;
         }
         return def;
     }
 
     function saveValue(key, val) {
-        if (typeof PluginService !== "undefined" && PluginService && PluginService.savePluginData) {
-            PluginService.savePluginData(root.pluginId, key, val);
-            if (PluginService.setGlobalVar) {
-                PluginService.setGlobalVar(root.pluginId, key, val);
+        var svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService;
+        if (svc && svc.savePluginData) {
+            svc.savePluginData(root.pluginId, key, val);
+            if (svc.setGlobalVar) {
+                svc.setGlobalVar(root.pluginId, key, val);
             }
         }
     }
@@ -188,12 +192,19 @@ PluginSettings {
     function loadAll() {
         function triggerLoad(item) {
             if (!item) return;
-            if (item.loadValue && typeof item.loadValue === "function") {
+            if (item !== root && item !== mainSettingsCol && item.loadValue && typeof item.loadValue === "function") {
                 item.loadValue();
             }
             if (item.children) {
                 for (var i = 0; i < item.children.length; i++) {
                     triggerLoad(item.children[i]);
+                }
+            }
+            if (item.data) {
+                for (var j = 0; j < item.data.length; j++) {
+                    if (item.data[j] !== item && (!item.children || item.children.indexOf(item.data[j]) === -1)) {
+                        triggerLoad(item.data[j]);
+                    }
                 }
             }
         }
@@ -204,12 +215,12 @@ PluginSettings {
 
     onPluginServiceChanged: {
         if (pluginService) {
-            loadAll();
+            Qt.callLater(loadAll);
         }
     }
 
     Connections {
-        target: PluginService
+        target: (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService
         ignoreUnknownSignals: true
         function onPluginDataChanged(pId) {
             if (pId === root.pluginId) {
@@ -227,6 +238,8 @@ PluginSettings {
         id: mainSettingsCol
         width: parent.width
         spacing: Theme.spacingL
+
+        readonly property var pluginService: (typeof PluginService !== "undefined" && PluginService) ? PluginService : root.pluginService
 
         function loadValue(key, def) {
             return root.loadValue(key, def);
@@ -1896,6 +1909,8 @@ PluginSettings {
                     topLeftRadius: outerR; topRightRadius: outerR
                     bottomLeftRadius: isLast ? outerR : innerR
                     bottomRightRadius: isLast ? outerR : innerR
+                    Behavior on bottomLeftRadius { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on bottomRightRadius { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
 
@@ -1954,12 +1969,16 @@ PluginSettings {
                 // 2. Audio Source Mode (Segmented Pill)
                 Rectangle {
                     width: parent.width
-                    height: audCol3.implicitHeight + Theme.spacingM * 2
+                    height: enableAudioToggle.value ? (audCol3.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: enableAudioToggle.value ? 1.0 : 0.0
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: audCol3
@@ -2007,15 +2026,17 @@ PluginSettings {
                 // 3. Microphone Device
                 Rectangle {
                     width: parent.width
-                    height: audCol4.implicitHeight + Theme.spacingM * 2
+                    height: enableAudioToggle.value ? (audCol4.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: enableAudioToggle.value ? ((audioSourceSetting.value === "system") ? 0.4 : 1.0) : 0.0
+                    enabled: enableAudioToggle.value && (audioSourceSetting.value !== "system")
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
-                    opacity: (audioSourceSetting.value === "desktop") ? 0.4 : 1.0
-                    enabled: (audioSourceSetting.value !== "desktop")
-                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: audCol4
@@ -2046,7 +2067,7 @@ PluginSettings {
                             }
                         }
                         SelectionSettingV2 {
-                            Layout.fillWidth: true; settingKey: "videoMic"; label: ""; description: ""
+                            Layout.fillWidth: true; settingKey: "audioMic"; label: ""; description: ""
                             options: root.micList; defaultValue: "default"
                         }
                     }
@@ -2055,12 +2076,16 @@ PluginSettings {
                 // 4. Audio Format (Segmented Pill)
                 Rectangle {
                     width: parent.width
-                    height: audCol2.implicitHeight + Theme.spacingM * 2
+                    height: enableAudioToggle.value ? (audCol2.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: enableAudioToggle.value ? 1.0 : 0.0
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: audCol2
@@ -2110,13 +2135,16 @@ PluginSettings {
                 // 5. Audio Quality / Bitrate (Segmented Pill)
                 Rectangle {
                     width: parent.width
-                    height: audCol7.implicitHeight + Theme.spacingM * 2
-                    readonly property real outerR: Theme.cornerRadius
+                    height: enableAudioToggle.value ? (audCol7.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: enableAudioToggle.value ? 1.0 : 0.0
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: audCol7
@@ -2164,12 +2192,16 @@ PluginSettings {
                 // 6. Audio Filename
                 Rectangle {
                     width: parent.width
-                    height: audCol6.implicitHeight + Theme.spacingM * 2
+                    height: enableAudioToggle.value ? (audCol6.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: enableAudioToggle.value ? 1.0 : 0.0
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: audCol6
@@ -2205,12 +2237,17 @@ PluginSettings {
                 // 7. Audio Custom Path (Last)
                 Rectangle {
                     width: parent.width
-                    height: audCol5.implicitHeight + Theme.spacingM * 2
+                    height: enableAudioToggle.value ? (audCol5.implicitHeight + Theme.spacingM * 2) : 0
+                    Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+                    clip: true
+                    opacity: enableAudioToggle.value ? 1.0 : 0.0
+                    readonly property real outerR: Theme.cornerRadius
                     readonly property real innerR: 4
                     topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: outerR; bottomRightRadius: outerR
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
                     border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
-                    visible: enableAudioToggle.value
+                    visible: height > 0 || opacity > 0
 
                     ColumnLayout {
                         id: audCol5
@@ -2582,6 +2619,255 @@ PluginSettings {
                     CopyBox {
                         label: "Niri Bind Configuration"
                         text: "Print { spawn \"dms\" \"ipc\" \"call\" \"screenCaptureToolbar\" \"toggle\"; }"
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 5. REQUIRED PACKAGES
+        // ---------------------------------------------------------------------
+        Item {
+            id: depsWrapper
+            width: parent.width
+            implicitHeight: depsCol.implicitHeight
+
+            property bool expanded: false
+            property var depStatus: ({
+                "gpu-screen-recorder": true,
+                "slurp": true,
+                "grim": true,
+                "wl-copy": true,
+                "satty": true,
+                "ffmpeg": true,
+                "pw-record": true,
+                "pactl": true,
+                "jq": true,
+                "notify-send": true,
+                "python3": true,
+                "wtype": true
+            })
+            property bool isChecking: true
+
+            Process {
+                id: depChecker
+                command: [
+                    "bash", "-c",
+                    "python3 -c \"import json, shutil, sys\n" +
+                    "cmds = [\n" +
+                    "  ('gpu-screen-recorder', 'gpu-screen-recorder'),\n" +
+                    "  ('slurp', 'slurp'),\n" +
+                    "  ('grim', 'grim'),\n" +
+                    "  ('wl-copy', 'wl-copy'),\n" +
+                    "  ('satty', 'satty'),\n" +
+                    "  ('ffmpeg', 'ffmpeg'),\n" +
+                    "  ('pw-record', 'pw-record'),\n" +
+                    "  ('pactl', 'pactl'),\n" +
+                    "  ('jq', 'jq'),\n" +
+                    "  ('notify-send', 'notify-send'),\n" +
+                    "  ('python3', 'python3'),\n" +
+                    "  ('wtype', 'wtype')\n" +
+                    "]\n" +
+                    "results = {k: bool(shutil.which(cmd)) for k, cmd in cmds}\n" +
+                    "sys.stdout.write(json.dumps(results))\n\""
+                ]
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        depsWrapper.isChecking = false;
+                        try {
+                            if (text && text.trim() !== "") {
+                                depsWrapper.depStatus = JSON.parse(text.trim());
+                            }
+                        } catch (e) {
+                            console.warn("Failed to parse dependency status:", e);
+                        }
+                    }
+                }
+            }
+
+            Component.onCompleted: {
+                depChecker.running = true;
+            }
+
+            Column {
+                id: depsCol
+                width: parent.width
+                spacing: 0
+
+                Item {
+                    id: depsHeaderRow
+                    width: parent.width
+                    height: 40
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacingXS
+
+                        DankIcon {
+                            name: "extension"
+                            size: 16
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: I18n.tr("Required packages")
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.weight: Font.DemiBold
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    DankIcon {
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "expand_more"
+                        size: Theme.iconSize || 20
+                        color: Theme.surfaceVariantText
+                        rotation: depsWrapper.expanded ? 180 : 0
+
+                        Behavior on rotation {
+                            NumberAnimation {
+                                duration: 200
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            depsWrapper.expanded = !depsWrapper.expanded;
+                            if (depsWrapper.expanded) {
+                                depsWrapper.isChecking = true;
+                                depChecker.running = true;
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    id: animHost
+                    width: parent.width
+                    clip: true
+                    height: depsWrapper.expanded ? groupContent.implicitHeight : 0
+                    opacity: depsWrapper.expanded ? 1.0 : 0.0
+                    visible: height > 0 || depsWrapper.expanded
+
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: 250
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 200
+                            easing.type: Easing.OutQuad
+                        }
+                    }
+
+                    SettingsGroup {
+                        id: groupContent
+                        width: parent.width
+
+                        SettingsRow {
+                            visible: depsWrapper.isChecking
+                            iconName: "hourglass_top"
+                            title: I18n.tr("Checking packages...")
+                        }
+
+                        Repeater {
+                            model: [
+                                {
+                                    id: "gpu-screen-recorder",
+                                    pkg: "gpu-screen-recorder",
+                                    features: "Hardware-accelerated screen & window video recording",
+                                    present: Boolean(depsWrapper.depStatus["gpu-screen-recorder"])
+                                },
+                                {
+                                    id: "slurp",
+                                    pkg: "slurp",
+                                    features: "Interactive region selection on Wayland compositors",
+                                    present: Boolean(depsWrapper.depStatus["slurp"])
+                                },
+                                {
+                                    id: "grim",
+                                    pkg: "grim",
+                                    features: "Wayland image capture for region and multi-monitor screenshots",
+                                    present: Boolean(depsWrapper.depStatus["grim"])
+                                },
+                                {
+                                    id: "wl-copy",
+                                    pkg: "wl-clipboard (wl-copy)",
+                                    features: "Copying captured screenshots and file paths directly to clipboard",
+                                    present: Boolean(depsWrapper.depStatus["wl-copy"])
+                                },
+                                {
+                                    id: "satty",
+                                    pkg: "satty",
+                                    features: "Screenshot annotation and quick image editing integration",
+                                    present: Boolean(depsWrapper.depStatus["satty"])
+                                },
+                                {
+                                    id: "ffmpeg",
+                                    pkg: "ffmpeg",
+                                    features: "Encoding, processing, and container conversion for video captures",
+                                    present: Boolean(depsWrapper.depStatus["ffmpeg"])
+                                },
+                                {
+                                    id: "pw-record",
+                                    pkg: "pipewire (pw-record)",
+                                    features: "Dedicated audio recording and real-time microphone testing",
+                                    present: Boolean(depsWrapper.depStatus["pw-record"])
+                                },
+                                {
+                                    id: "pactl",
+                                    pkg: "pulseaudio-utils (pactl)",
+                                    features: "Querying audio devices and controlling mute state",
+                                    present: Boolean(depsWrapper.depStatus["pactl"])
+                                },
+                                {
+                                    id: "jq",
+                                    pkg: "jq",
+                                    features: "Querying active monitor geometries and window states from compositor IPC",
+                                    present: Boolean(depsWrapper.depStatus["jq"])
+                                },
+                                {
+                                    id: "notify-send",
+                                    pkg: "libnotify (notify-send)",
+                                    features: "Desktop notifications for completed captures and missing dependencies",
+                                    present: Boolean(depsWrapper.depStatus["notify-send"])
+                                },
+                                {
+                                    id: "python3",
+                                    pkg: "python3",
+                                    features: "Running gamepad/controller input listener service",
+                                    present: Boolean(depsWrapper.depStatus["python3"])
+                                },
+                                {
+                                    id: "wtype",
+                                    pkg: "wtype",
+                                    features: "Simulating Wayland keyboard events for gamepad controls",
+                                    present: Boolean(depsWrapper.depStatus["wtype"])
+                                }
+                            ]
+
+                            delegate: SettingsRow {
+                                iconName: modelData.present ? "check_circle" : "error"
+                                iconColor: modelData.present ? Theme.success : Theme.error
+                                title: modelData.pkg
+                                subtitle: I18n.tr("Used for: %1").arg(modelData.features)
+                                trailingBadge: modelData.present ? I18n.tr("Installed") : I18n.tr("Missing")
+                                trailingBadgeColor: modelData.present ? Theme.surfaceVariantText : Theme.error
+                            }
+                        }
                     }
                 }
             }

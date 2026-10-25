@@ -20,6 +20,7 @@ Item {
 
     // Reset animation state
     property bool isResetting: false
+    property bool isInitialized: false
     property real animatedPct: getDisplayPercentage()
 
     width: parent.width
@@ -30,19 +31,36 @@ Item {
 
     function loadValue() {
         const settings = findSettings();
-        if (settings && settings.pluginService) {
-            value = settings.loadValue(settingKey, defaultValue);
+        if (settings) {
+            value = String(settings.loadValue(settingKey, defaultValue));
             slider.value = getDisplayPercentage();
+            isInitialized = true;
+        } else {
+            const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : null;
+            if (svc && svc.loadPluginData) {
+                value = String(svc.loadPluginData("screenCaptureToolbar", settingKey, defaultValue));
+                slider.value = getDisplayPercentage();
+                isInitialized = true;
+            }
         }
     }
 
     Component.onCompleted: Qt.callLater(loadValue)
 
     onValueChanged: {
-        if (!isResetting) {
-            slider.value = getDisplayPercentage();
-            const settings = findSettings();
-            if (settings) settings.saveValue(settingKey, value);
+        if (!isInitialized || isResetting) return;
+        slider.value = getDisplayPercentage();
+        const settings = findSettings();
+        if (settings) {
+            settings.saveValue(settingKey, value);
+        } else {
+            const svc = (typeof PluginService !== "undefined" && PluginService) ? PluginService : null;
+            if (svc && svc.savePluginData) {
+                svc.savePluginData("screenCaptureToolbar", settingKey, value);
+                if (svc.setGlobalVar) {
+                    svc.setGlobalVar("screenCaptureToolbar", settingKey, value);
+                }
+            }
         }
     }
 
