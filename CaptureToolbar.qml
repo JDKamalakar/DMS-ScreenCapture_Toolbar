@@ -93,6 +93,7 @@ PluginComponent {
     property bool showPointer: (pluginData && pluginData.showPointer != null) ? pluginData.showPointer : true
     property bool saveToDisk: (pluginData && pluginData.saveToDisk != null) ? pluginData.saveToDisk : true
     property bool copyToClipboard: (pluginData && pluginData.copyToClipboard != null) ? pluginData.copyToClipboard : true
+    property bool annotate: (pluginData && pluginData.annotate != null) ? pluginData.annotate : false
     property string format: (pluginData && pluginData.format) || "png"
     property int quality: (pluginData && pluginData.quality) || 90
     property string customPath: (pluginData && pluginData.customPath) || ""
@@ -548,6 +549,7 @@ PluginComponent {
 
                 if (key === "copyToClipboard") root.copyToClipboard = value;
                 else if (key === "saveToDisk") root.saveToDisk = value;
+                else if (key === "annotate") root.annotate = value;
                 else if (key === "stdout") root.stdout = value;
                 else if (key === "recordAudio") root.recordAudio = value;
                 else if (key === "recordMic") root.recordMic = value;
@@ -776,6 +778,7 @@ PluginComponent {
         root.showPointer = pluginData.showPointer !== undefined ? pluginData.showPointer : true;
         root.saveToDisk = pluginData.saveToDisk !== undefined ? pluginData.saveToDisk : true;
         root.copyToClipboard = pluginData.copyToClipboard !== undefined ? pluginData.copyToClipboard : true;
+        root.annotate = pluginData.annotate !== undefined ? pluginData.annotate : false;
         root.format = pluginData.format || "png";
         root.quality = pluginData.quality || 90;
         root.customPath = pluginData.customPath || "";
@@ -870,7 +873,17 @@ PluginComponent {
         let editorCommand = root.effectivePipeCommand();
         let dir = root.screenshotDir();
         let dmsStr = "dms screenshot";
-        if (root.captureMode === "full") dmsStr += " full";
+        let isDraw = false;
+
+        if (root.captureMode === "interactive") {
+            if (root.annotate && !useStdout) {
+                dmsStr = "dms screenshot draw";
+                isDraw = true;
+            } else {
+                dmsStr = "dms screenshot region";
+            }
+        }
+        else if (root.captureMode === "full") dmsStr += " full";
         else if (root.captureMode === "monitor") {
             if (root.videoMonitor === "Focused" || root.videoMonitor === "default") {
                 dmsStr += " full";
@@ -887,6 +900,15 @@ PluginComponent {
         }
 
         dmsStr += root.showPointer ? " --cursor=on" : " --cursor=off";
+
+        if (root.captureMode === "interactive") {
+            if (!isDraw) {
+                dmsStr += " --annotate=false";
+            }
+        } else {
+            dmsStr += " --annotate=false";
+        }
+
         if (!root.saveToDisk) dmsStr += " --no-file";
         if (!root.copyToClipboard) dmsStr += " --no-clipboard";
         if (!root.showNotify) dmsStr += " --no-notify";
@@ -1619,6 +1641,10 @@ PluginComponent {
                                 SettingToggle {
                                     label: "Save to Disk"; iconName: "save"; active: root.saveToDisk
                                     onToggled: { root.saveToDisk = !root.saveToDisk; root._save("saveToDisk", root.saveToDisk) }
+                                }
+                                SettingToggle {
+                                    label: "Annotate Region Captures"; iconName: "draw"; active: root.annotate
+                                    onToggled: { root.annotate = !root.annotate; root._save("annotate", root.annotate) }
                                 }
                                 SettingToggle { 
                                     label: "Screenshot Editor"; iconName: "output"; active: root.stdout
