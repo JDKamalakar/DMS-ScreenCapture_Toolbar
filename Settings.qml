@@ -785,7 +785,68 @@ PluginSettings {
                     }
                 }
 
-                // 5. Screenshot Editor
+                // 5. Annotate Region Captures
+                Rectangle {
+                    width: parent.width
+                    height: ssRowAnnotate.implicitHeight + Theme.spacingM * 2
+                    readonly property real innerR: 4
+                    topLeftRadius: innerR; topRightRadius: innerR; bottomLeftRadius: innerR; bottomRightRadius: innerR
+                    color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.5)
+                    border.width: 1; border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10)
+
+                    RowLayout {
+                        id: ssRowAnnotate
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM; anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: annotateToggle.checked ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(Theme.surfaceContainerHighest.r, Theme.surfaceContainerHighest.g, Theme.surfaceContainerHighest.b, 0.5)
+                            Layout.alignment: Qt.AlignVCenter
+                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                            DankIcon {
+                                name: "draw"
+                                size: 18
+                                color: annotateToggle.checked ? Theme.primary : Theme.surfaceVariantText
+                                anchors.centerIn: parent
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+
+                        Column {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+                            StyledText { text: "Annotate Region Captures"; font.weight: Font.Medium; color: Theme.surfaceText }
+                            StyledText { text: "Draw, highlight and add markup to selected region before saving"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        }
+
+                        DankToggle {
+                            id: annotateToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            property string settingKey: "annotate"
+                            readonly property alias value: annotateToggle.checked
+                            checked: false
+
+                            function loadValue() {
+                                var val = root.loadValue(settingKey, false);
+                                checked = (val === true || val === "true");
+                            }
+                            Component.onCompleted: loadValue()
+
+                            onToggled: isChecked => {
+                                checked = isChecked;
+                                root.saveValue(settingKey, isChecked);
+                            }
+                        }
+                    }
+                }
+
+                // 6. Screenshot Editor
                 Rectangle {
                     width: parent.width
                     height: ssRow8.implicitHeight + Theme.spacingM * 2
@@ -846,7 +907,7 @@ PluginSettings {
                     }
                 }
 
-                // 6. Editor Pipe Command
+                // 7. Editor Pipe Command
                 Rectangle {
                     width: parent.width
                     height: ssCol11.implicitHeight + Theme.spacingM * 2
@@ -890,7 +951,7 @@ PluginSettings {
                         StringSetting { Layout.fillWidth: true; settingKey: "pipeCommand"; label: ""; description: ""; placeholder: "swappy -f -"; defaultValue: "" }
                     }
                 }
-                // 7. Enable Editor Shortcut
+                // 8. Enable Editor Shortcut
                 Rectangle {
                     width: parent.width
                     height: ssRow9.implicitHeight + Theme.spacingM * 2
@@ -954,7 +1015,7 @@ PluginSettings {
                     }
                 }
 
-                // 8. Swap Shortcuts
+                // 9. Swap Shortcuts
                 Rectangle {
                     width: parent.width
                     height: ssRow10.implicitHeight + Theme.spacingM * 2
@@ -1018,7 +1079,7 @@ PluginSettings {
                     }
                 }
 
-                // 9. Scroll Interval
+                // 10. Scroll Interval
                 Rectangle {
                     width: parent.width
                     height: ssCol6.implicitHeight + Theme.spacingM * 2
@@ -1042,7 +1103,7 @@ PluginSettings {
                     }
                 }
 
-                // 10. Image Format (Segmented Pill)
+                // 11. Image Format (Segmented Pill)
                 Rectangle {
                     width: parent.width
                     height: ssCol4.implicitHeight + Theme.spacingM * 2
@@ -1094,7 +1155,7 @@ PluginSettings {
                     }
                 }
 
-                // 11. JPEG Quality
+                // 12. JPEG Quality
                 Rectangle {
                     width: parent.width
                     height: ssCol5.implicitHeight + Theme.spacingM * 2
@@ -1121,7 +1182,7 @@ PluginSettings {
                     }
                 }
 
-                // 12. Screenshot Filename
+                // 13. Screenshot Filename
                 Rectangle {
                     width: parent.width
                     height: ssColFilename.implicitHeight + Theme.spacingM * 2
@@ -1164,7 +1225,7 @@ PluginSettings {
                         StringSetting { Layout.fillWidth: true; settingKey: "filename"; label: ""; description: ""; placeholder: "screenshot_2026-05-15_14-30-00.png"; defaultValue: "" }
                     }
                 }
-                // 13. Screenshot Custom Path (Last)
+                // 14. Screenshot Custom Path (Last)
                 Rectangle {
                     width: parent.width
                     height: ssCol7.implicitHeight + Theme.spacingM * 2
